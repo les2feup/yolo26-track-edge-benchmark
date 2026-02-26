@@ -116,14 +116,24 @@ def try_load_model(model_name: str, device: str) -> tuple:
     """
     Attempt to load a YOLO model, returning (model, error_str) tuple.
 
+    model_name may be a bare filename (e.g. 'yolo26n.hef') or an absolute
+    path. Bare filenames are resolved against the repo's models/ directory so
+    callers can pass profile.model_variants entries directly without knowing
+    the project root.
+
     Returns (model_instance, None) on success.
     Returns (None, error_message) on any failure — OOM, missing file,
     incompatible format, or unsupported backend — so callers can log and
     continue without crashing the benchmark loop.
     """
+    _models_dir = Path(__file__).parents[2] / "models"
+    resolved = Path(model_name)
+    if not resolved.is_absolute():
+        resolved = _models_dir / model_name
+
     try:
         from ultralytics import YOLO
-        model = YOLO(model_name)
+        model = YOLO(str(resolved))
         # Trigger actual weight loading by moving to device;
         # lazy-load backends (TensorRT, Hailo) may only fail here.
         model.to(device)
