@@ -66,6 +66,14 @@ def run_sequence_hailo(
     seq_name    = seq_dir.name.rsplit("-", 1)[0]   # "MOT17-09-SDP" → "MOT17-09"
     model_name  = Path(hef_path).name
 
+    # Original image dimensions for scaling boxes back from model input space.
+    # HailoInfer resizes frames to imgsz×imgsz internally; decoded boxes are in
+    # that space. GT coordinates are in original image pixels, so we must scale.
+    _probe = cv2.imread(str(frame_paths[0]))
+    orig_h, orig_w = _probe.shape[:2]
+    scale_x = orig_w / imgsz
+    scale_y = orig_h / imgsz
+
     process = psutil.Process()
     tracker = sv.ByteTrack()
     records = []
@@ -88,7 +96,7 @@ def run_sequence_hailo(
                 target_classes=CLASSES,
             )
 
-            # Feed detections into supervision ByteTrack
+            # Feed detections into supervision ByteTrack (still in model space)
             if boxes_xyxy:
                 dets = sv.Detections(
                     xyxy=np.array(boxes_xyxy, dtype=np.float32),
@@ -100,9 +108,18 @@ def run_sequence_hailo(
 
             tracked = tracker.update_with_detections(dets)
 
-            track_ids  = tracked.tracker_id.tolist() if tracked.tracker_id is not None else []
-            bboxes     = tracked.xyxy.tolist()        if len(tracked) > 0 else []
-            track_confs = tracked.confidence.tolist() if tracked.confidence is not None else []
+            track_ids   = tracked.tracker_id.tolist() if tracked.tracker_id is not None else []
+            track_confs = tracked.confidence.tolist()  if tracked.confidence is not None else []
+
+            # Scale tracked boxes from model input space → original image pixels
+            if len(tracked) > 0:
+                scaled = tracked.xyxy.copy()
+                scaled[:, [0, 2]] *= scale_x
+                scaled[:, [1, 3]] *= scale_y
+                bboxes = scaled.tolist()
+            else:
+                bboxes = []
+
             footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
 
             inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
