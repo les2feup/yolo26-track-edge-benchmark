@@ -134,9 +134,11 @@ def try_load_model(model_name: str, device: str) -> tuple:
     try:
         from ultralytics import YOLO
         model = YOLO(str(resolved))
-        # Trigger actual weight loading by moving to device;
-        # lazy-load backends (TensorRT, Hailo) may only fail here.
-        model.to(device)
+        # model.to() is only valid for PyTorch (.pt) models. Exported formats
+        # (.hef, .engine, .onnx) bind to their device at load time and raise
+        # TypeError if .to() is called. Skip it for non-pt files.
+        if resolved.suffix == ".pt":
+            model.to(device)
         return model, None
     except FileNotFoundError:
         return None, f"model file not found: {model_name}"
