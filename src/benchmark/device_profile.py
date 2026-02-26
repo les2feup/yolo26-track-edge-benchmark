@@ -112,40 +112,42 @@ def _from_yaml(path: Path) -> DeviceProfile:
     )
 
 
+def resolve_model_path(model_name: str) -> Path:
+    """Resolve a bare model filename to an absolute path under models/."""
+    _models_dir = Path(__file__).parents[2] / "models"
+    p = Path(model_name)
+    return p if p.is_absolute() else _models_dir / model_name
+
+
 def try_load_model(model_name: str, device: str) -> tuple:
     """
-    Attempt to load a YOLO model, returning (model, error_str) tuple.
+    Attempt to load a PyTorch YOLO model, returning (model, error_str).
 
-    model_name may be a bare filename (e.g. 'yolo26n.hef') or an absolute
-    path. Bare filenames are resolved against the repo's models/ directory so
-    callers can pass profile.model_variants entries directly without knowing
-    the project root.
+    For .hef models use run_sequence_hailo() from hailo_runner instead —
+    HEF files are not loadable via ultralytics.
 
     Returns (model_instance, None) on success.
-    Returns (None, error_message) on any failure — OOM, missing file,
-    incompatible format, or unsupported backend — so callers can log and
+    Returns (None, error_message) on any failure so callers can log and
     continue without crashing the benchmark loop.
     """
-    _models_dir = Path(__file__).parents[2] / "models"
-    resolved = Path(model_name)
-    if not resolved.is_absolute():
-        resolved = _models_dir / model_name
+    resolved = resolve_model_path(model_name)
+
+    if resolved.suffix == ".hef":
+        return None, (
+            f"{model_name} is a HEF file — use run_sequence_hailo() "
+            "from benchmark.hailo_runner instead of try_load_model()."
+        )
 
     try:
         from ultralytics import YOLO
         model = YOLO(str(resolved))
-        # model.to() is only valid for PyTorch (.pt) models. Exported formats
-        # (.hef, .engine, .onnx) bind to their device at load time and raise
-        # TypeError if .to() is called. Skip it for non-pt files.
-        if resolved.suffix == ".pt":
-            model.to(device)
+        model.to(device)
         return model, None
     except FileNotFoundError:
         return None, f"model file not found: {model_name}"
     except MemoryError as exc:
         return None, f"OOM loading {model_name}: {exc}"
     except RuntimeError as exc:
-        # Covers CUDA OOM, TRT engine version mismatch, Hailo load failures
         return None, f"RuntimeError loading {model_name}: {exc}"
     except Exception as exc:  # noqa: BLE001
         return None, f"unexpected error loading {model_name}: {type(exc).__name__}: {exc}"

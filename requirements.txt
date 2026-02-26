@@ -20,3 +20,9 @@ ipykernel>=6.29.0
 
 # CPU memory measurement
 psutil>=6.0.0
+
+# ByteTrack for Hailo backend (pure Python, no ultralytics dependency)
+supervision>=0.23.0
+
+# git notebook output stripping
+nbstripout>=0.7.0
