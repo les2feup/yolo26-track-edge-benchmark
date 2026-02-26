@@ -4,8 +4,8 @@ Post-processing for YOLO26 raw HEF output tensors.
 The DFC compiler fuses the DFL decode into the HEF, so the 6 output tensors
 are already decoded feature maps — not raw DFL logits:
 
-    bbox tensors  — shape (H, W, 4):  ltrb distances in stride units
-    class tensors — shape (H, W, C):  class scores (sigmoid already applied by DFC)
+    bbox tensors  — shape (H, W, 4):  ltrb distances in stride units (DFL fused by DFC)
+    class tensors — shape (H, W, C):  raw logits (sigmoid NOT applied — done here)
 
 Tensors are paired by channel count: C=4 → bbox, C>4 → class.
 Scales are inferred from the spatial dimensions: 80×80→stride 8, 40×40→16, 20×20→32.
@@ -51,7 +51,8 @@ def _decode_scale(
     y2 = anchors[:, 1] + ltrb[:, 3]
     boxes = np.stack([x1, y1, x2, y2], axis=1)        # (N, 4)
 
-    cls_probs = cls_hwc.reshape(N, -1)                 # (N, C) — already in [0,1]
+    # Class outputs are raw logits (not sigmoid'd by DFC) — apply sigmoid now.
+    cls_probs = 1.0 / (1.0 + np.exp(-cls_hwc.reshape(N, -1)))  # (N, C)
     class_ids = cls_probs.argmax(axis=1).astype(np.int32)
     scores    = cls_probs[np.arange(N), class_ids]    # (N,)
 
