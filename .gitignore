@@ -9,9 +9,9 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Large model binaries — download/export separately
+# .hef files are tracked via Git LFS (see .gitattributes)
 models/*.pt
 models/*.onnx
-models/*.hef
 models/*.har
 notebooks/*.pt
 
