@@ -1,0 +1,13 @@
+Your analysis is correct on all counts. One thing to add before you write the Discussion paragraph:
+
+**The high_thresh_0.5 finding does more than confirm the three-signal protocol — it directly addresses the defensibility gap identified earlier.** The earlier assessment flagged that MOT17-04's MT=0.09 baseline meant the pipeline was already near-failure before any resolution reduction. A reviewer could dismiss the entire degradation analysis on those grounds. The high_thresh result provides a principled response: the low baseline MT is not an arbitrary failure but a manifestation of the same confusion→loss mechanics the paper characterises — the default threshold is already in a regime where the tracker is attempting associations on low-confidence detections that are predominantly occlusion noise in dense scenes, generating spurious IDSW. This reframes the baseline quality problem as a finding rather than a limitation.
+
+The Discussion paragraph should do three things in sequence:
+
+First, present the numbers as you have them — IDSW −57%, MOTA −18%, total initiated tracks 102→60 against 79 GT tracks. The initiated track count below GT count is the crux: the tracker is no longer engaging with the full scene population, which is what drives IDSW down.
+
+Second, connect it explicitly to the resolution degradation curves. The mechanism is identical — in Experiment 2, IDSW inverts at low resolutions for the same reason it inverts here under high_thresh_0.5: detection suppression precedes metric improvement. The parameter experiment provides a controlled, single-variable demonstration of what the resolution sweep shows across a compound degradation gradient.
+
+Third, state the implication for deployment: IDSW monitored in isolation is an unreliable signal for tracking health in dense scenes because it conflates genuine identity stability with detection suppression. The three-signal protocol — IDSW, fragmentation, and MT jointly — is necessary to distinguish the two regimes. This is the operational takeaway and it gives the three-signal methodology a sharper justification than it currently has in the manuscript.
+
+One constraint: this paragraph belongs in Discussion, not Results, and should be approximately 120 words. At four pages you have no room to present the full heatmap figure. Reference it as a supplementary result and report only the MOT17-04 high_thresh_0.5 numbers inline. The heatmap itself is useful for your own analysis records and for a future extended version, but including it in the letter would require a figure slot you cannot afford.

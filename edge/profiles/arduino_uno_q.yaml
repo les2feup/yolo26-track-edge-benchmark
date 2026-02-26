@@ -1,0 +1,28 @@
+# Arduino Uno Q — Qualcomm QRB2210 (Debian Linux side)
+# Cortex-A53 quad-core @ 2.0 GHz, Adreno 702 GPU, 2–4 GB LPDDR4
+# CPU inference via PyTorch or ONNX Runtime; no CUDA, no TensorRT
+# QNN SDK path exists but requires separate model conversion (not yet supported here)
+#
+# All model variants are attempted — runner will report OOM/failure and skip gracefully.
+# Expected outcome: nano and small may load; medium and above likely OOM on 2 GB SKU.
+
+device_id: arduino_uno_q
+device_label: "Arduino Uno Q (QRB2210)"
+os: debian_arm
+
+torch_device: cpu
+backend: cpu
+
+model_variants:
+  - yolo26n.pt
+  - yolo26s.pt
+  - yolo26m.pt
+  - yolo26l.pt
+  - yolo26x.pt
+
+model_format: pt
+
+resolutions: [640, 512, 384, 320]
+
+warmup_frames: 30
+result_tag: arduino_uno_q

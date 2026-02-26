@@ -1,0 +1,22 @@
+# YOLO inference and integrated ByteTrack tracking
+ultralytics>=8.3.0
+lap>=0.5.12
+
+# MOT evaluation metrics (MOTA, IDF1, IDSW, MT, ML)
+motmetrics>=1.4.0
+
+# Data handling
+pandas>=2.2.0
+
+# Paper figures
+matplotlib>=3.9.0
+
+# Frame I/O and live preview
+opencv-python>=4.10.0
+
+# Jupyter notebooks
+jupyterlab>=4.2.0
+ipykernel>=6.29.0
+
+# CPU memory measurement
+psutil>=6.0.0

@@ -1,0 +1,111 @@
+# Hailo DFC export environment
+# Produces .hef files for Hailo-8L (RPi AI Kit) from YOLO .pt / .onnx sources.
+#
+# Version pin rationale:
+#   DFC v3.33 + HailoRT 4.23 = current release, cp311 wheel — Python 3.11 required.
+#   hailo_model_zoo v2.16 = last release with hailo8l support (v5.x dropped it).
+#   Python 3.11 = CPython version matching the HailoRT cp311 wheel.
+#   ubuntu:22.04 = the OS the DFC wheels were built and tested against.
+#
+# The Hailo DFC and HailoRT wheels are NOT on PyPI — download from
+# https://hailo.ai/developer-zone/software-downloads/ (free registration)
+# and place in edge/hailo-wheels/ before building this image.
+#
+# Expected wheel filenames (exact names from the Hailo developer portal):
+#   hailo_dataflow_compiler-3.33.0-py3-none-linux_x86_64.whl
+#   hailort-4.23.0-cp311-cp311-linux_x86_64.whl
+#
+# Build:
+#   docker build -f edge/Dockerfile.hailo-export -t hailo-export:3.33 .
+#
+# Run (see edge/docker-compose.yml for the canonical invocation):
+#   docker run --rm \
+#     -v "$(pwd)/models:/workspace/models" \
+#     -v "$(pwd)/edge/calib_imgs:/workspace/calib_imgs:ro" \
+#     hailo-export:3.33 \
+#     python edge/export_hailo.py --all --calib-dir /workspace/calib_imgs
+
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during apt installs
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ── System dependencies ───────────────────────────────────────────────────────
+# graphviz + libgraphviz-dev: required by pygraphviz (DFC dependency)
+# libfuse2: required by some Hailo CLI tools
+# python3-tk: required by matplotlib (DFC internal visualisation fallback)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-venv \
+        python3.11-dev \
+        python3-pip \
+        build-essential \
+        graphviz \
+        libgraphviz-dev \
+        libfuse2 \
+        libgl1 \
+        libglib2.0-0 \
+        python3-tk \
+        git \
+        wget \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Make python3.11 the default python/pip in this image.
+# ubuntu:22.04 blocks ensurepip on the system Python; python3-pip (installed above)
+# already provides pip3.  We upgrade it via itself and alias python/pip.
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
+ && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+ && pip3 install --upgrade pip setuptools wheel \
+ && ln -sf /usr/bin/pip3 /usr/local/bin/pip
+
+# ── pygraphviz (must compile against system graphviz headers) ─────────────────
+RUN pip install pygraphviz
+
+# ── Hailo DFC and HailoRT wheels ─────────────────────────────────────────────
+# Wheels are COPY'd from the build context (edge/hailo-wheels/).
+# They are not on PyPI — download from https://hailo.ai/developer-zone/software-downloads/
+COPY edge/hailo-wheels/hailo_dataflow_compiler-3.33.0-py3-none-linux_x86_64.whl /tmp/
+COPY edge/hailo-wheels/hailort-4.23.0-cp311-cp311-linux_x86_64.whl /tmp/
+
+RUN pip install /tmp/hailo_dataflow_compiler-3.33.0-py3-none-linux_x86_64.whl \
+ && pip install /tmp/hailort-4.23.0-cp311-cp311-linux_x86_64.whl \
+ && rm /tmp/*.whl
+
+# ── hailo_model_zoo v2.16 (last release with hailo8l support) ─────────────────
+# --no-build-isolation: setup.py checks for the DFC package at build time;
+# the isolated pip build env won't see it. Running without isolation lets it
+# find the DFC already installed in the image.
+RUN git clone --depth 1 --branch v2.16 \
+        https://github.com/hailo-ai/hailo_model_zoo.git /opt/hailo_model_zoo \
+ && pip install --no-build-isolation /opt/hailo_model_zoo
+
+# ── Ultralytics (for ONNX export from .pt) ────────────────────────────────────
+# ultralytics pulls opencv-python (full, GL-linked) as a transitive dep.
+# We install ultralytics first, then force-reinstall the headless variant so
+# the cv2.so in site-packages is the GL-free one. libgl1 is also installed via
+# apt as a belt-and-suspenders fallback for any other GL-linked binary.
+#
+# numpy pin: DFC 3.33 is compiled against numpy 1.x (scipy/pwlf use the 1.x C API).
+# ultralytics would pull numpy 2.x which breaks scipy at import time.
+# We force numpy==1.26.4 (the version DFC declares) after all other packages.
+RUN pip install "ultralytics>=8.3.0" "onnx>=1.14" "onnxsim>=0.4" pyyaml \
+ && pip install --force-reinstall "opencv-python-headless>=4.10" \
+ && pip install --force-reinstall "numpy==1.26.4"
+
+# ── Project source — benchmark package only ───────────────────────────────────
+# pyproject.toml pins requires-python>=3.12 for the dev environment.
+# This image runs 3.11 (HailoRT wheel constraint). We install the src
+# directly via PYTHONPATH so no version gate is applied; the export script
+# only uses pathlib and subprocess from the benchmark package.
+WORKDIR /workspace
+COPY src/ src/
+ENV PYTHONPATH="/workspace/src"
+
+# ── Copy edge scripts ─────────────────────────────────────────────────────────
+COPY edge/ edge/
+
+# Default: export all variants using calibration images mounted at /workspace/calib_imgs
+CMD ["python", "edge/export_hailo.py", "--all", \
+     "--calib-dir", "/workspace/calib_imgs", \
+     "--hw-arch", "hailo8l"]

@@ -1,0 +1,34 @@
+# Raspberry Pi 5 + Hailo-8L M.2 AI Hat
+# Backend: Hailo-8L (13 TOPS) via HailoRT + hailort Python bindings
+# HEF models must be compiled offline on Ubuntu 22.04 / Python 3.10 / DFC v3.32
+# See: edge/export_hailo.py for the export pipeline
+
+device_id: rpi5_hailo
+device_label: "Raspberry Pi 5 Model B + Hailo-8L"
+os: raspbian
+
+# Torch device for the pre/post-processing path (CPU on all RPi variants)
+torch_device: cpu
+
+# Backend selects the inference executor in runner.py
+# Options: cpu | cuda | tensorrt | hailo
+backend: hailo
+
+# .hef files must be placed in models/ alongside the .pt originals
+# Compilation: edge/export_hailo.py --model yolo26n.pt --hw-arch hailo8l
+model_variants:
+  - yolo26n.hef
+  - yolo26s.hef
+  - yolo26m.hef   # may fail compilation — runner will skip gracefully
+  - yolo26l.hef   # likely too large for Hailo-8L SRAM
+  - yolo26x.hef   # likely too large for Hailo-8L SRAM
+
+model_format: hef
+
+# Resolution sweep — subset to limit inference time on constrained hardware
+resolutions: [640, 512, 384, 320]
+
+warmup_frames: 30
+
+# Tag appended to all output CSV filenames for result provenance
+result_tag: rpi5_hailo

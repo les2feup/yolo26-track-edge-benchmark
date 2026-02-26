@@ -1,0 +1,6 @@
+model,status,hef_path,notes
+yolo26n.pt,ok,/workspace/models/yolo26n.hef,
+yolo26s.pt,ok,/workspace/models/yolo26s.hef,
+yolo26m.pt,ok,/workspace/models/yolo26m.hef,
+yolo26l.pt,ok,/workspace/models/yolo26l.hef,expected to exceed Hailo-8L SRAM — attempting anyway
+yolo26x.pt,ok,/workspace/models/yolo26x.hef,expected to exceed Hailo-8L SRAM — attempting anyway

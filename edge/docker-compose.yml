@@ -1,0 +1,37 @@
+# Hailo .hef export — docker compose invocation
+#
+# Prerequisites (run once from project root):
+#   1. Download Hailo wheels into edge/hailo-wheels/ — see Dockerfile.hailo-export
+#   2. Collect calibration images:
+#        python edge/collect_calib.py --n 64
+#   3. Place .pt model files in models/
+#
+# Export all variants:
+#   docker compose -f edge/docker-compose.yml run --rm hailo-export
+#
+# Export a single model:
+#   docker compose -f edge/docker-compose.yml run --rm hailo-export \
+#       python edge/export_hailo.py --model yolo26n.pt --calib-dir /workspace/calib_imgs
+#
+# Use DFC three-step parser (if hailomz fails on YOLO26 graph):
+#   docker compose -f edge/docker-compose.yml run --rm hailo-export \
+#       python edge/export_hailo.py --all --calib-dir /workspace/calib_imgs --fallback-parser
+#
+# Output .hef files land in models/ on the host (bind-mounted read-write).
+# export_results.csv is written to edge/ on the host.
+
+services:
+  hailo-export:
+    build:
+      context: ..                          # project root — COPY paths in Dockerfile are relative to it
+      dockerfile: edge/Dockerfile.hailo-export
+    image: hailo-export:3.33
+    volumes:
+      # models/ — read .pt/.onnx, write .hef (host ↔ container)
+      - ../models:/workspace/models
+      # calib_imgs — read-only inside the container
+      - ../edge/calib_imgs:/workspace/calib_imgs:ro
+      # edge/ — write export_results.csv back to host
+      - ../edge:/workspace/edge
+    # Default command from Dockerfile: export all variants at hailo8l
+    # Override on the command line (see examples above)

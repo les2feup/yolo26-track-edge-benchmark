@@ -1,0 +1,24 @@
+# Raspberry Pi 5 — CPU-only (no Hailo hat, or hat not available)
+# Cortex-A76 quad-core @ 2.4 GHz, 8 GB LPDDR4X
+# Baseline for RPi5 without AI acceleration
+
+device_id: rpi5_cpu
+device_label: "Raspberry Pi 5 Model B (CPU)"
+os: raspbian
+
+torch_device: cpu
+backend: cpu
+
+model_variants:
+  - yolo26n.pt
+  - yolo26s.pt
+  - yolo26m.pt   # ~300 MB RAM — feasible on 8 GB
+  - yolo26l.pt   # ~600 MB RAM — feasible but slow
+  - yolo26x.pt   # ~1.2 GB RAM — try; runner will report OOM and skip
+
+model_format: pt
+
+resolutions: [640, 512, 384, 320]
+
+warmup_frames: 30
+result_tag: rpi5_cpu

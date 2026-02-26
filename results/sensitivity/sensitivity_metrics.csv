@@ -1,0 +1,19 @@
+config,override,seq,mota,idf1,idsw,idsw/gt,frag,tot_init,mostly_tracked
+default,—,MOT17-09,0.567,0.566,37,1.423,0.341,85,21
+default,—,MOT17-02,0.336,0.529,40,0.755,0.316,133,15
+default,—,MOT17-04,0.321,0.441,46,0.582,0.206,102,10
+buffer_60,{'track_buffer': 60},MOT17-09,0.562,0.566,41,1.577,0.287,80,21
+buffer_60,{'track_buffer': 60},MOT17-02,0.337,0.526,38,0.717,0.299,127,15
+buffer_60,{'track_buffer': 60},MOT17-04,0.322,0.442,43,0.544,0.184,98,10
+high_thresh_0.4,{'track_high_thresh': 0.4},MOT17-09,0.615,0.633,32,1.231,0.186,59,20
+high_thresh_0.4,{'track_high_thresh': 0.4},MOT17-02,0.349,0.521,31,0.585,0.198,96,13
+high_thresh_0.4,{'track_high_thresh': 0.4},MOT17-04,0.289,0.43,23,0.291,0.061,66,8
+high_thresh_0.5,{'track_high_thresh': 0.5},MOT17-09,0.646,0.646,29,1.115,0.136,44,20
+high_thresh_0.5,{'track_high_thresh': 0.5},MOT17-02,0.341,0.507,20,0.377,0.098,61,13
+high_thresh_0.5,{'track_high_thresh': 0.5},MOT17-04,0.262,0.407,20,0.253,0.017,60,7
+match_thresh_0.7,{'match_thresh': 0.7},MOT17-09,0.6,0.612,43,1.654,0.407,113,20
+match_thresh_0.7,{'match_thresh': 0.7},MOT17-02,0.339,0.489,82,1.547,0.521,192,13
+match_thresh_0.7,{'match_thresh': 0.7},MOT17-04,0.293,0.372,150,1.899,0.426,202,9
+match_thresh_0.9,{'match_thresh': 0.9},MOT17-09,0.562,0.554,32,1.231,0.313,67,21
+match_thresh_0.9,{'match_thresh': 0.9},MOT17-02,0.329,0.501,34,0.642,0.229,105,15
+match_thresh_0.9,{'match_thresh': 0.9},MOT17-04,0.324,0.458,35,0.443,0.116,86,10

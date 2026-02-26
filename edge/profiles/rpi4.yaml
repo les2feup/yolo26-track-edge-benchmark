@@ -1,0 +1,24 @@
+# Raspberry Pi 4 — CPU-only
+# Cortex-A72 quad-core @ 1.8 GHz, 4 GB LPDDR4
+# Conservative model and resolution set due to 4 GB RAM ceiling
+
+device_id: rpi4
+device_label: "Raspberry Pi 4 Model B"
+os: raspbian
+
+torch_device: cpu
+backend: cpu
+
+model_variants:
+  - yolo26n.pt
+  - yolo26s.pt   # ~150 MB RAM — borderline; runner will report OOM and skip if needed
+  - yolo26m.pt   # expected to fail on 4 GB — included to capture the failure boundary
+  - yolo26l.pt
+  - yolo26x.pt
+
+model_format: pt
+
+resolutions: [640, 512, 384, 320]
+
+warmup_frames: 30
+result_tag: rpi4

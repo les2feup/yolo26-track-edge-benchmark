@@ -1,0 +1,30 @@
+# NVIDIA Jetson Nano — JetPack 4.x
+# Maxwell GPU (472 GFLOPS), 4 GB LPDDR4 shared memory
+# TensorRT .engine files must be compiled ON the Nano (cross-compilation not supported)
+# JetPack 4.x ships CUDA 10.2, cuDNN 8.0, TensorRT 7.x / 8.x
+# Python: 3.6 (system) or 3.8 (recommended via venv)
+#
+# Export engines on the Nano itself:
+#   from ultralytics import YOLO
+#   YOLO("yolo26n.pt").export(format="engine", imgsz=640, device=0, half=True)
+
+device_id: jetson_nano
+device_label: "Jetson Nano (JetPack 4.x)"
+os: jetpack
+
+torch_device: "cuda:0"
+backend: tensorrt
+
+model_variants:
+  - yolo26n.engine
+  - yolo26s.engine
+  - yolo26m.engine   # ~600 MB VRAM — likely exceeds 4 GB shared budget; runner skips
+  - yolo26l.engine
+  - yolo26x.engine
+
+model_format: engine
+
+resolutions: [640, 512, 384, 320]
+
+warmup_frames: 30
+result_tag: jetson_nano
