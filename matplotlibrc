@@ -1,0 +1,13 @@
+# Project-level matplotlib defaults.
+# Loaded automatically when matplotlib is imported from the project root directory.
+# Times New Roman matches IEEE double-column template typography.
+
+font.family      : serif
+font.serif       : Times New Roman, DejaVu Serif, serif
+font.size        : 10
+axes.titlesize   : 11
+axes.labelsize   : 10
+xtick.labelsize  : 9
+ytick.labelsize  : 9
+legend.fontsize  : 9
+figure.titlesize : 11

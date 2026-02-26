@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import linear_sum_assignment
 
 from benchmark.metrics import compute_mot_metrics
 from benchmark.mot_gt import load_seqinfo
@@ -140,29 +141,17 @@ def _get_footpoints(df: pd.DataFrame, frame_id: int) -> list[tuple[float, float]
 
 
 def _greedy_match(cur: np.ndarray, base: np.ndarray) -> list[float]:
-    """Greedy nearest-neighbour pairing between two sets of 2D points.
+    """Optimal bipartite assignment between two sets of 2D footpoints.
 
-    For each point in cur (the smaller or equal set), find the nearest
-    unmatched point in base and record the Euclidean distance.  Points
-    left unmatched due to set size difference are ignored.
+    Uses the Hungarian algorithm (scipy.optimize.linear_sum_assignment) for
+    globally minimal total displacement. Unmatched points due to set size
+    difference are ignored — only the matched pairs contribute.
     """
     if len(cur) == 0 or len(base) == 0:
         return []
 
-    # Pairwise Euclidean distances: shape (N_cur, N_base)
-    diff  = cur[:, None, :] - base[None, :, :]   # (N_cur, N_base, 2)
-    dists = np.sqrt((diff ** 2).sum(axis=2))       # (N_cur, N_base)
+    diff  = cur[:, None, :] - base[None, :, :]
+    dists = np.sqrt((diff ** 2).sum(axis=2))   # (N_cur, N_base)
 
-    used_base = set()
-    results   = []
-
-    # Sort cur indices by their closest base distance (greedy nearest-first)
-    for i in np.argsort(dists.min(axis=1)):
-        row         = dists[i].copy()
-        row[list(used_base)] = np.inf
-        j = int(np.argmin(row))
-        if row[j] < np.inf:
-            results.append(float(row[j]))
-            used_base.add(j)
-
-    return results
+    row_ind, col_ind = linear_sum_assignment(dists)
+    return [float(dists[r, c]) for r, c in zip(row_ind, col_ind)]

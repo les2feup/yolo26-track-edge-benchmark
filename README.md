@@ -88,12 +88,16 @@ JupyterLab runs on the device but is accessed from your development machine
 via **SSH port forwarding**. This is the most reliable approach — no firewall
 changes, no IP configuration.
 
-**Step 1 — On the device**, start JupyterLab bound to localhost only:
+**Step 1 — On the device**, start JupyterLab from the project root:
 
 ```bash
-DEVICE_PROFILE=edge/profiles/<profile>.yaml \
+cd ~/yolo26-track-edge-benchmark
+DEVICE_PROFILE=$(pwd)/edge/profiles/<profile>.yaml \
   jupyter lab --no-browser --port=8888
 ```
+
+Using `$(pwd)/...` produces an absolute path, which avoids resolution
+errors when JupyterLab changes the working directory internally.
 
 Copy the token from the output (looks like `?token=abc123...`).
 
@@ -112,7 +116,7 @@ or `screen` on the device before opening the tunnel.
 ```bash
 # On the device — start a persistent session
 tmux new -s bench
-DEVICE_PROFILE=edge/profiles/<profile>.yaml jupyter lab --no-browser --port=8888
+DEVICE_PROFILE=$(pwd)/edge/profiles/<profile>.yaml jupyter lab --no-browser --port=8888
 # Detach with Ctrl-B D; reattach later with: tmux attach -t bench
 ```
 
@@ -162,7 +166,7 @@ rsync -avP user@devmachine:path/to/models/*.hef models/
 
 ```bash
 source .venv/bin/activate
-DEVICE_PROFILE=edge/profiles/rpi5_hailo.yaml jupyter lab --no-browser --port=8888
+DEVICE_PROFILE=$(pwd)/edge/profiles/rpi5_hailo.yaml jupyter lab --no-browser --port=8888
 ```
 
 ---
@@ -189,7 +193,7 @@ rsync -avP user@devmachine:path/to/models/*.pt models/
 
 ```bash
 source .venv/bin/activate
-DEVICE_PROFILE=edge/profiles/rpi5_cpu.yaml jupyter lab --no-browser --port=8888
+DEVICE_PROFILE=$(pwd)/edge/profiles/rpi5_cpu.yaml jupyter lab --no-browser --port=8888
 ```
 
 > **Note:** yolo26m and above will be slow (~0.5–2 FPS). The notebooks skip
@@ -207,7 +211,7 @@ Same setup steps as RPi 5 CPU above. yolo26m and above are expected to fail
 on the 4 GB RAM ceiling — the runner reports the error and continues.
 
 ```bash
-DEVICE_PROFILE=edge/profiles/rpi4.yaml jupyter lab --no-browser --port=8888
+DEVICE_PROFILE=$(pwd)/edge/profiles/rpi4.yaml jupyter lab --no-browser --port=8888
 ```
 
 ---
@@ -265,7 +269,7 @@ for variant in ["yolo26n", "yolo26s", "yolo26m", "yolo26l", "yolo26x"]:
 ```bash
 source ~/bench-venv/bin/activate
 cd yolo26-track-edge-benchmark
-DEVICE_PROFILE=edge/profiles/jetson_nano.yaml jupyter lab --no-browser --port=8888
+DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano.yaml jupyter lab --no-browser --port=8888
 ```
 
 > **Note:** yolo26m and above may exceed the 4 GB shared memory budget.
@@ -299,7 +303,7 @@ rsync -avP user@devmachine:path/to/models/*.pt models/
 
 ```bash
 source .venv/bin/activate
-DEVICE_PROFILE=edge/profiles/arduino_uno_q.yaml jupyter lab --no-browser --port=8888
+DEVICE_PROFILE=$(pwd)/edge/profiles/arduino_uno_q.yaml jupyter lab --no-browser --port=8888
 ```
 
 > **Note:** yolo26n and yolo26s are expected to load; yolo26m and above will
