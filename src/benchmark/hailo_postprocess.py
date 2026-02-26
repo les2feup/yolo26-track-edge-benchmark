@@ -52,7 +52,9 @@ def _decode_scale(
     boxes = np.stack([x1, y1, x2, y2], axis=1)        # (N, 4)
 
     # Class outputs are raw logits (not sigmoid'd by DFC) — apply sigmoid now.
-    cls_probs = 1.0 / (1.0 + np.exp(-cls_hwc.reshape(N, -1)))  # (N, C)
+    # np.exp overflows for large negative values; clip to [-88, 88] (float32 safe range).
+    logits    = cls_hwc.reshape(N, -1).clip(-88.0, 88.0)
+    cls_probs = 1.0 / (1.0 + np.exp(-logits))                  # (N, C)
     class_ids = cls_probs.argmax(axis=1).astype(np.int32)
     scores    = cls_probs[np.arange(N), class_ids]    # (N,)
 
