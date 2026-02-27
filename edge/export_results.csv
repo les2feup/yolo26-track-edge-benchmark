@@ -4,3 +4,8 @@ yolo26s.pt,ok,/workspace/models/yolo26s.hef,
 yolo26m.pt,ok,/workspace/models/yolo26m.hef,
 yolo26l.pt,ok,/workspace/models/yolo26l.hef,expected to exceed Hailo-8L SRAM — attempting anyway
 yolo26x.pt,ok,/workspace/models/yolo26x.hef,expected to exceed Hailo-8L SRAM — attempting anyway
+yolo26n.pt,576,ok,/workspace/models/yolo26n_576.hef,
+yolo26s.pt,576,ok,/workspace/models/yolo26s_576.hef,
+yolo26m.pt,576,ok,/workspace/models/yolo26m_576.hef,
+yolo26l.pt,576,ok,/workspace/models/yolo26l_576.hef,expected to exceed Hailo-8L SRAM — attempting anyway
+yolo26x.pt,576,ok,/workspace/models/yolo26x_576.hef,expected to exceed Hailo-8L SRAM — attempting anyway

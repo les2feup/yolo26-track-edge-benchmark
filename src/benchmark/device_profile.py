@@ -72,11 +72,10 @@ def load_profile(path: str | Path | None = None) -> DeviceProfile:
     # Auto-detect: try to match hostname to a known profile
     hostname = socket.gethostname().lower()
     candidates = {
-        "rpi5":         "rpi5_cpu.yaml",
-        "raspberrypi5": "rpi5_cpu.yaml",
+        "rpi5-b-hailo": "rpi5_hailo.yaml",
+        "rpi5-b-hailo": "rpi5_cpu.yaml",
         "rpi4":         "rpi4.yaml",
-        "raspberrypi":  "rpi4.yaml",
-        "jetson":       "jetson_nano.yaml",
+        "jetson-nano":  "jetson_nano.yaml",
         "uno-q":        "arduino_uno_q.yaml",
         "arduinoq":     "arduino_uno_q.yaml",
     }

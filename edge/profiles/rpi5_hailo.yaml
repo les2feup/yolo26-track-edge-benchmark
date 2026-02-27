@@ -17,16 +17,25 @@ backend: hailo
 # .hef files must be placed in models/ alongside the .pt originals
 # Compilation: edge/export_hailo.py --model yolo26n.pt --hw-arch hailo8l
 model_variants:
+  # Default (hailo8l @ 640px)
   - yolo26n.hef
   - yolo26s.hef
-  - yolo26m.hef   # may fail compilation — runner will skip gracefully
-  - yolo26l.hef   # likely too large for Hailo-8L SRAM
-  - yolo26x.hef   # likely too large for Hailo-8L SRAM
+  - yolo26m.hef      
+  - yolo26l.hef      
+  - yolo26x.hef      
+  # 576px variants
+  - yolo26n_576.hef
+  - yolo26s_576.hef
+  - yolo26m_576.hef
+  - yolo26l_576.hef
+  - yolo26x_576.hef
 
 model_format: hef
 
-# Resolution sweep — subset to limit inference time on constrained hardware
-resolutions: [640, 512, 384, 320]
+# HEF resolution is fixed at compile time — each HEF variant runs at one resolution only.
+# The runner passes imgsz to the loop but hailo_runner.py reads the actual shape from
+# the HEF itself (hef_imgsz). resolutions: [640, 576] here prevents redundant loop iterations.
+resolutions: [640, 576]
 
 warmup_frames: 30
 

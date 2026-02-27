@@ -66,19 +66,22 @@ def run_sequence_hailo(
     seq_name    = seq_dir.name.rsplit("-", 1)[0]   # "MOT17-09-SDP" → "MOT17-09"
     model_name  = Path(hef_path).name
 
-    # Original image dimensions for scaling boxes back from model input space.
-    # HailoInfer resizes frames to imgsz×imgsz internally; decoded boxes are in
-    # that space. GT coordinates are in original image pixels, so we must scale.
-    _probe = cv2.imread(str(frame_paths[0]))
-    orig_h, orig_w = _probe.shape[:2]
-    scale_x = orig_w / imgsz
-    scale_y = orig_h / imgsz
-
     process = psutil.Process()
     tracker = sv.ByteTrack()
     records = []
 
     with HailoInfer(hef_path) as model:
+        # HEF input resolution is fixed at compile time — always use this for
+        # coordinate decoding and scaling, regardless of the requested imgsz.
+        hef_h, hef_w, _ = model.input_shape
+        hef_imgsz = hef_w   # assumed square; hef_h == hef_w for YOLO26
+
+        # Original image dimensions for scaling boxes from HEF input space → pixels.
+        _probe = cv2.imread(str(frame_paths[0]))
+        orig_h, orig_w = _probe.shape[:2]
+        scale_x = orig_w / hef_imgsz
+        scale_y = orig_h / hef_imgsz
+
         for frame_idx, img_path in enumerate(frame_paths):
             frame_id  = frame_idx + 1
             frame_bgr = cv2.imread(str(img_path))
@@ -91,7 +94,7 @@ def run_sequence_hailo(
 
             boxes_xyxy, confs, cls_ids = decode_detections(
                 raw,
-                imgsz=imgsz,
+                imgsz=hef_imgsz,
                 conf_thres=CONF,
                 target_classes=CLASSES,
             )
@@ -134,7 +137,7 @@ def run_sequence_hailo(
                 "confs":        json.dumps(track_confs),
                 "footpoints":   json.dumps(footpoints),
                 "mem_bytes":    mem_bytes,
-                "imgsz":        imgsz,
+                "imgsz":        hef_imgsz,
                 "model":        model_name,
                 "seq":          seq_name,
             })

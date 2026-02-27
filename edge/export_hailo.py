@@ -56,25 +56,32 @@ _ALL_VARIANTS = ["yolo26n.pt", "yolo26s.pt", "yolo26m.pt", "yolo26l.pt", "yolo26
 # Models likely to exceed Hailo-8L SRAM (~8 MB) — attempted but expected to fail
 _EXPECTED_OVERSIZE = {"yolo26l.pt", "yolo26x.pt"}
 
+# Canonical 640-px suffix used when imgsz == 640, for backwards compatibility
+# with the existing .hef filenames (no suffix).  All other resolutions are
+# encoded as _{imgsz} in the stem, e.g. yolo26n_576.hef.
+def _hef_stem(pt_stem: str, imgsz: int) -> str:
+    return pt_stem if imgsz == 640 else f"{pt_stem}_{imgsz}"
 
-def export_onnx(pt_path: Path) -> Path:
-    """Export PyTorch .pt to ONNX opset 11 with static shapes."""
-    onnx_path = pt_path.with_suffix(".onnx")
+
+def export_onnx(pt_path: Path, imgsz: int = 640) -> Path:
+    """Export PyTorch .pt to ONNX opset 11 with static shapes at the given resolution."""
+    stem      = _hef_stem(pt_path.stem, imgsz)
+    onnx_path = _MODELS_DIR / f"{stem}.onnx"
     if onnx_path.exists():
         print(f"[onnx] reusing existing {onnx_path.name}")
         return onnx_path
 
-    print(f"[onnx] exporting {pt_path.name} → {onnx_path.name}")
+    print(f"[onnx] exporting {pt_path.name} @ {imgsz}px → {onnx_path.name}")
     from ultralytics import YOLO
     model = YOLO(str(pt_path))
     model.export(
         format="onnx",
-        imgsz=640,
+        imgsz=imgsz,
         opset=11,       # DFC v3.x parser is validated on opset 11
         dynamic=False,  # static shapes required for Hailo compilation
         simplify=False, # Hailo parser handles simplification internally
     )
-    # ultralytics exports to the same directory as the .pt file
+    # ultralytics exports to the same directory as the .pt file; move to models/
     exported = pt_path.parent / (pt_path.stem + ".onnx")
     if exported != onnx_path:
         exported.rename(onnx_path)
@@ -86,6 +93,7 @@ def compile_hef(
     calib_dir: Path,
     hw_arch: str,
     fallback_parser: bool,
+    imgsz: int = 640,
 ) -> tuple[Path | None, str]:
     """
     Compile ONNX → HEF using the hailo_sdk_client Python API directly.
@@ -162,10 +170,10 @@ def compile_hef(
                 return None, f"no calibration images found in {calib_dir}"
 
             calib_array = np.stack([
-                cv2.cvtColor(cv2.resize(cv2.imread(str(p)), (640, 640)),
+                cv2.cvtColor(cv2.resize(cv2.imread(str(p)), (imgsz, imgsz)),
                              cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
                 for p in calib_imgs
-            ])  # shape: (N, 640, 640, 3)
+            ])  # shape: (N, imgsz, imgsz, 3)
 
             runner = ClientRunner(hw_arch=hw_arch, har=str(har_raw))
             runner.optimize(calib_array, data_type=CalibrationDataType.np_array)
@@ -191,10 +199,11 @@ def export_one(
     calib_dir: Path,
     hw_arch: str,
     fallback_parser: bool,
+    imgsz: int = 640,
 ) -> dict:
-    """Export a single model variant. Returns a result record dict."""
+    """Export a single model variant at the given resolution. Returns a result record dict."""
     pt_path = _MODELS_DIR / model_name
-    record  = {"model": model_name, "status": "unknown", "hef_path": "", "notes": ""}
+    record  = {"model": model_name, "imgsz": imgsz, "status": "unknown", "hef_path": "", "notes": ""}
 
     if not pt_path.exists():
         record["status"] = "skipped"
@@ -205,13 +214,13 @@ def export_one(
         record["notes"] = "expected to exceed Hailo-8L SRAM — attempting anyway"
 
     try:
-        onnx_path = export_onnx(pt_path)
+        onnx_path = export_onnx(pt_path, imgsz=imgsz)
     except Exception as exc:
         record["status"] = "failed"
         record["notes"]  = f"ONNX export error: {exc}"
         return record
 
-    hef_path, err = compile_hef(onnx_path, calib_dir, hw_arch, fallback_parser)
+    hef_path, err = compile_hef(onnx_path, calib_dir, hw_arch, fallback_parser, imgsz=imgsz)
     if err:
         record["status"] = "failed"
         record["notes"]  = err
@@ -235,6 +244,8 @@ def main() -> None:
     parser.add_argument("--hw-arch",         default="hailo8l",
                         choices=["hailo8", "hailo8l"],
                         help="Target Hailo architecture (default: hailo8l for RPi AI Kit)")
+    parser.add_argument("--imgsz",           type=int, default=640,
+                        help="Input resolution in pixels (default: 640; e.g. 576 for a second sweep)")
     parser.add_argument("--fallback-parser", action="store_true",
                         help="Skip hailomz and use DFC three-step API directly")
     args = parser.parse_args()
@@ -247,17 +258,19 @@ def main() -> None:
     results  = []
 
     for variant in variants:
-        print(f"\n{'='*60}\nExporting {variant}\n{'='*60}")
-        rec = export_one(variant, args.calib_dir, args.hw_arch, args.fallback_parser)
+        print(f"\n{'='*60}\nExporting {variant} @ {args.imgsz}px\n{'='*60}")
+        rec = export_one(variant, args.calib_dir, args.hw_arch, args.fallback_parser, imgsz=args.imgsz)
         results.append(rec)
         status_tag = "OK" if rec["status"] == "ok" else rec["status"].upper()
-        print(f"[{status_tag}] {variant}  {rec.get('hef_path', '')}  {rec.get('notes', '')}")
+        print(f"[{status_tag}] {variant} @ {args.imgsz}px  {rec.get('hef_path', '')}  {rec.get('notes', '')}")
 
-    # Write summary CSV
+    # Write summary CSV — append rows so existing 640-px results are preserved
     summary_path = _ROOT / "edge" / "export_results.csv"
-    with open(summary_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["model", "status", "hef_path", "notes"])
-        writer.writeheader()
+    file_exists  = summary_path.exists()
+    with open(summary_path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["model", "imgsz", "status", "hef_path", "notes"])
+        if not file_exists:
+            writer.writeheader()
         writer.writerows(results)
 
     print(f"\nExport summary written to {summary_path}")

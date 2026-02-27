@@ -20,11 +20,9 @@ SEQUENCES = ["MOT17-09", "MOT17-02", "MOT17-04"]
 # All suffix variants (DPM/FRCNN/SDP) share identical gt/gt.txt and img1/.
 SEQ_SUFFIX = "SDP"
 
-# ── Model variants spanning the efficiency–accuracy tradeoff ─────────────────
-MODEL_VARIANTS = ["yolo26n.pt", "yolo26s.pt", "yolo26m.pt", "yolo26l.pt", "yolo26x.pt"]
-
-# ── Experiment 2: resolution sweep from full to half in 64-pixel steps ───────
-RESOLUTIONS = [640, 576, 512, 448, 384, 320]
+# ── Baseline resolution for degradation normalisation ────────────────────────
+# Model variants and resolution sweep are device-specific — defined in each
+# device profile (edge/profiles/*.yaml) and the desktop fallback in device_profile.py.
 IMGSZ_BASE  = 640
 
 # ── Tracker and inference configuration (fixed across all conditions) ─────────

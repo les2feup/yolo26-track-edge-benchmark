@@ -13,6 +13,10 @@
 #   docker compose -f edge/docker-compose.yml run --rm hailo-export \
 #       python edge/export_hailo.py --model yolo26n.pt --calib-dir /workspace/calib_imgs
 #
+# Export all variants at a non-default resolution (e.g. 576px):
+#   docker compose -f edge/docker-compose.yml run --rm hailo-export \
+#       python edge/export_hailo.py --all --imgsz 576 --calib-dir /workspace/calib_imgs
+#
 # Use DFC three-step parser (if hailomz fails on YOLO26 graph):
 #   docker compose -f edge/docker-compose.yml run --rm hailo-export \
 #       python edge/export_hailo.py --all --calib-dir /workspace/calib_imgs --fallback-parser
