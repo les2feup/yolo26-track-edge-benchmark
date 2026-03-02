@@ -89,12 +89,20 @@ async def _run(args: argparse.Namespace) -> None:
     print(f"{'Voltage':>10}  {'Current':>10}  {'Power':>10}  {'Temp':>8}")
     print("  " + "─" * 46)
 
+    # SIGINT / SIGTERM trigger a clean stop (CSV is flushed per-sample)
+    import signal
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, stop.set)
+
     readings = await collect(
         address=args.address,
         duration_s=args.duration,
         interval_s=args.interval,
         csv_path=csv_path,
         on_reading=_print_reading,
+        stop_event=stop,
     )
 
     print(f"\nCollected {len(readings)} samples.")
