@@ -245,7 +245,7 @@ async def collect(
     list[TC66CReading]
         All collected readings.
     """
-    from bleak import BleakClient
+    from bleak import BleakClient, BleakError
 
     readings: list[TC66CReading] = []
     buf = bytearray()
@@ -268,51 +268,69 @@ async def collect(
         if csv_path.stat().st_size == 0:
             writer.writerow(TC66CReading.__dataclass_fields__.keys())
 
+    MAX_RECONNECTS = 5
+    reconnects = 0
+    t_start = time.monotonic()
+
     try:
-        async with BleakClient(address) as client:
-            # Auto-detect characteristic UUIDs for this hardware revision
-            char_write, char_notify = _resolve_chars(client)
-            await client.start_notify(char_notify, _on_notify)
+        while reconnects <= MAX_RECONNECTS:
+            try:
+                async with BleakClient(address) as client:
+                    char_write, char_notify = _resolve_chars(client)
+                    await client.start_notify(char_notify, _on_notify)
+                    if reconnects > 0:
+                        print(f"[tc66c] reconnected ({reconnects}/{MAX_RECONNECTS})")
 
-            t_start = time.monotonic()
-            while True:
-                # Check termination conditions
-                if stop_event is not None and stop_event.is_set():
+                    while True:
+                        if stop_event is not None and stop_event.is_set():
+                            break
+                        if stop_event is None and (time.monotonic() - t_start) >= duration_s:
+                            break
+
+                        buf.clear()
+                        ready.clear()
+                        await client.write_gatt_char(char_write, CMD_GETVA)
+
+                        try:
+                            await asyncio.wait_for(ready.wait(), timeout=interval_s + 2.0)
+                        except asyncio.TimeoutError:
+                            continue
+
+                        ts = time.time()
+                        raw = bytes(buf[:TOTAL_PAYLOAD])
+                        plain = decrypt_payload(raw)
+
+                        if not verify_headers(plain):
+                            continue
+
+                        reading = parse_reading(plain, ts=ts)
+                        readings.append(reading)
+
+                        if writer is not None:
+                            writer.writerow(reading.csv_row)
+                            csv_file.flush()
+
+                        if on_reading is not None:
+                            on_reading(reading)
+
+                        await asyncio.sleep(interval_s)
+
+                    # Clean exit from the polling loop — done
+                    try:
+                        await client.stop_notify(char_notify)
+                    except (EOFError, OSError, Exception):
+                        pass
+                    break  # success, exit reconnect loop
+
+            except (EOFError, OSError, BleakError) as exc:
+                # BLE link dropped — reconnect if budget remains
+                reconnects += 1
+                if reconnects > MAX_RECONNECTS:
+                    print(f"[tc66c] BLE connection lost, max reconnects exceeded: {exc}")
                     break
-                if stop_event is None and (time.monotonic() - t_start) >= duration_s:
-                    break
-
-                # Request a measurement
-                buf.clear()
-                ready.clear()
-                await client.write_gatt_char(char_write, CMD_GETVA)
-
-                # Wait for the 192-byte response (timeout guards against lost packets)
-                try:
-                    await asyncio.wait_for(ready.wait(), timeout=interval_s + 2.0)
-                except asyncio.TimeoutError:
-                    continue  # missed packet, retry next cycle
-
-                ts = time.time()
-                raw = bytes(buf[:TOTAL_PAYLOAD])
-                plain = decrypt_payload(raw)
-
-                if not verify_headers(plain):
-                    continue  # corrupted packet, skip
-
-                reading = parse_reading(plain, ts=ts)
-                readings.append(reading)
-
-                if writer is not None:
-                    writer.writerow(reading.csv_row)
-                    csv_file.flush()
-
-                if on_reading is not None:
-                    on_reading(reading)
-
-                await asyncio.sleep(interval_s)
-
-            await client.stop_notify(char_notify)
+                print(f"[tc66c] BLE dropped ({exc.__class__.__name__}), "
+                      f"reconnecting in 3 s ... ({reconnects}/{MAX_RECONNECTS})")
+                await asyncio.sleep(3.0)
     finally:
         if csv_file is not None:
             csv_file.close()
