@@ -22,7 +22,7 @@ model_variants:
 
 model_format: pt
 
-resolutions: [640, 512, 384, 320]
+resolutions: [640, 576, 512, 384, 320]
 
 warmup_frames: 30
 result_tag: arduino_uno_q

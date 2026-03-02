@@ -24,7 +24,7 @@ model_variants:
 
 model_format: engine
 
-resolutions: [640, 512, 384, 320]
+resolutions: [640, 576]
 
 warmup_frames: 30
 result_tag: jetson_nano
