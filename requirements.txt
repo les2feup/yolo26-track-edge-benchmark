@@ -27,3 +27,10 @@ supervision>=0.23.0
 
 # git notebook output stripping
 nbstripout>=0.7.0
+
+# BLE power meter (JT-TC66C) data acquisition
+bleak>=0.22.0
+pycryptodome>=3.20.0
+
+# Allow asyncio.run() inside Jupyter's event loop (power profiling notebook)
+nest_asyncio>=1.6.0
