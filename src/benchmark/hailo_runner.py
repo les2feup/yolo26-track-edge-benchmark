@@ -39,6 +39,7 @@ def run_sequence_hailo(
     imgsz: int,
     out_csv: Path,
     clahe: bool = False,
+    max_duration_s: float | None = None,
 ) -> pd.DataFrame:
     """
     Per-frame Hailo-8L tracking loop for one MOT17 sequence.
@@ -82,7 +83,13 @@ def run_sequence_hailo(
         scale_x = orig_w / hef_imgsz
         scale_y = orig_h / hef_imgsz
 
+        t_loop_start = time.perf_counter()
+
         for frame_idx, img_path in enumerate(frame_paths):
+            # Time-budget guard: stop inference after max_duration_s elapsed
+            if max_duration_s is not None and (time.perf_counter() - t_loop_start) >= max_duration_s:
+                break
+
             frame_id  = frame_idx + 1
             frame_bgr = cv2.imread(str(img_path))
             if clahe:

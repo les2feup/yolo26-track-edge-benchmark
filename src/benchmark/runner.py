@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import time
 from pathlib import Path
@@ -37,6 +39,7 @@ def run_sequence(
     out_csv: Path,
     tracker: str | None = None,
     clahe: bool = False,
+    max_duration_s: float | None = None,
 ) -> pd.DataFrame:
     """Per-frame YOLO tracking loop for one MOT17 sequence.
 
@@ -74,14 +77,36 @@ def run_sequence(
     model_name   = Path(model.model_name).name
     tracker_path = tracker if tracker is not None else TRACKER
 
-    use_cuda = torch.cuda.is_available() and next(model.model.parameters()).is_cuda
+    # TensorRT/engine models may not expose PyTorch parameters — fall back
+    # to checking model.device when parameters() is empty.
+    try:
+        _on_cuda = next(model.model.parameters()).is_cuda
+    except StopIteration:
+        _on_cuda = hasattr(model, "device") and "cuda" in str(model.device)
+    use_cuda = torch.cuda.is_available() and _on_cuda
     if use_cuda:
         torch.cuda.reset_peak_memory_stats()
+
+    # Explicit device for model.track() — ensures the predictor's AutoBackend
+    # runs on the correct device.  Without this, some ultralytics versions
+    # (especially on older torch/Python) fall back to CPU silently.
+    if hasattr(model, "device") and str(model.device) != "cpu":
+        device_arg = model.device
+    elif use_cuda:
+        device_arg = "cuda:0"
+    else:
+        device_arg = None
 
     process = psutil.Process()
     records = []
 
+    t_loop_start = time.perf_counter()
+
     for frame_idx, img_path in enumerate(frame_paths):
+        # Time-budget guard: stop inference after max_duration_s elapsed
+        if max_duration_s is not None and (time.perf_counter() - t_loop_start) >= max_duration_s:
+            break
+
         frame_id  = frame_idx + 1   # MOT17 uses 1-indexed frame IDs
         frame_bgr = cv2.imread(str(img_path))
         if clahe:
@@ -95,6 +120,7 @@ def run_sequence(
             conf=CONF,
             classes=CLASSES,
             imgsz=imgsz,
+            device=device_arg,
             verbose=False,
         )
         t1 = time.perf_counter()
