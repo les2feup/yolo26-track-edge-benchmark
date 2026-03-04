@@ -76,6 +76,7 @@ def load_profile(path: str | Path | None = None) -> DeviceProfile:
         "rpi5-b-hailo": "rpi5_cpu.yaml",
         "rpi4":         "rpi4.yaml",
         "jetson-nano":  "jetson_nano.yaml",
+        "les2-seed-studio-j10": "jetson_nano.yaml",
         "uno-q":        "arduino_uno_q.yaml",
         "arduinoq":     "arduino_uno_q.yaml",
     }
@@ -111,6 +112,43 @@ def _from_yaml(path: Path) -> DeviceProfile:
     )
 
 
+# Backends with fixed input shapes baked in at compile time.
+# Model files encode the resolution in the filename suffix (no suffix = 640px).
+_BAKED_RESOLUTION_BACKENDS = {"hailo", "tensorrt"}
+
+
+def baked_imgsz(model_path: str) -> int:
+    """Derive the compile-time resolution from a model filename.
+
+    Works for any backend that bakes resolution into the filename:
+        yolo26n.engine → 640   (no suffix = canonical 640px)
+        yolo26n_576.hef → 576
+        yolo26s_512.engine → 512
+    """
+    stem = model_path.rsplit(".", 1)[0]
+    parts = stem.rsplit("_", 1)
+    return int(parts[-1]) if len(parts) == 2 and parts[-1].isdigit() else 640
+
+
+def iter_model_imgsz(profile: DeviceProfile):
+    """Yield (model_path, imgsz) for every benchmark condition.
+
+    For backends with baked-in resolutions (hailo, tensorrt), each model variant
+    encodes exactly one resolution — iterate model_variants and derive imgsz
+    from the filename.
+
+    For dynamic backends (cpu, cuda with .pt files), iterate the full
+    model_variants × resolutions grid.
+    """
+    if profile.backend in _BAKED_RESOLUTION_BACKENDS:
+        for mp in profile.model_variants:
+            yield mp, baked_imgsz(mp)
+    else:
+        for mp in profile.model_variants:
+            for imgsz in profile.resolutions:
+                yield mp, imgsz
+
+
 def resolve_model_path(model_name: str) -> Path:
     """Resolve a bare model filename to an absolute path under models/."""
     _models_dir = Path(__file__).parents[2] / "models"
@@ -140,7 +178,9 @@ def try_load_model(model_name: str, device: str) -> tuple:
     try:
         from ultralytics import YOLO
         model = YOLO(str(resolved))
-        model.to(device)
+        # TensorRT engines manage their own device — skip .to() for .engine files
+        if resolved.suffix != ".engine":
+            model = model.to(device)
         return model, None
     except FileNotFoundError:
         return None, f"model file not found: {model_name}"

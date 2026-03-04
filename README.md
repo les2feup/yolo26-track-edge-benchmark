@@ -11,10 +11,13 @@ by YAML profiles in `edge/profiles/`.
 data/           MOT17 sequences (not tracked — download separately)
 edge/
   profiles/     YAML device profiles
-  export_hailo.py   ONNX → HEF compiler (Docker, offline)
-  collect_calib.py  Calibration image sampler
+  export_hailo.py       ONNX → HEF compiler (Docker, offline)
+  export_tensorrt.py    .pt → .onnx → .engine (on-device, reference only)
+  collect_calib.py      Calibration image sampler
+  JetsonNano_SETUP.md   Jetson Nano 14-step setup guide
+  RPi4_IMPLEMENTATION.md  RPi 4 Miniforge setup guide
 models/         Model weights (.pt / .hef / .engine — not tracked)
-notebooks/      00 setup · 01 profiling · 02 resolution · 03 figures
+notebooks/      00 setup · 01 profiling · 02 resolution · 03 figures · 04 power
 results/        CSV benchmark outputs (tracked) · figures (not tracked)
 src/benchmark/  Python package (editable install)
 ```
@@ -122,6 +125,19 @@ DEVICE_PROFILE=$(pwd)/edge/profiles/<profile>.yaml jupyter lab --no-browser --po
 
 ---
 
+## Cross-device reproducibility
+
+All devices pin `ultralytics>=8.3.0,<8.4.0` — NMS/post-processing changed in
+8.4.x, producing different detection counts on identical inputs.
+
+PyTorch versions and precision vary across devices: the Jetson Nano runs
+TensorRT FP16 (torch 1.11, cp38/CUDA 10.2), CPU-only devices (RPi 4/5) run
+FP32 (torch 2.0+), and the desktop runs FP32 via CUDA or CPU. Small numerical
+differences in near-threshold detections are expected and documented as a
+known limitation.
+
+---
+
 ## Device profiles
 
 ### Desktop / development machine
@@ -206,9 +222,14 @@ DEVICE_PROFILE=$(pwd)/edge/profiles/rpi5_cpu.yaml jupyter lab --no-browser --por
 **Profile:** `edge/profiles/rpi4.yaml`
 **Backend:** PyTorch CPU (Cortex-A72, 4 GB LPDDR4)
 **Models:** `.pt`
+**Setup guide:** [`edge/RPi4_IMPLEMENTATION.md`](edge/RPi4_IMPLEMENTATION.md)
 
-Same setup steps as RPi 5 CPU above. yolo26m and above are expected to fail
-on the 4 GB RAM ceiling — the runner reports the error and continues.
+The RPi 4 uses Cortex-A72 (ARMv8.0-A), which lacks the ARMv8.2-A instructions
+in modern PyPI wheels. The setup guide uses Miniforge (Conda) with pinned
+PyTorch and NumPy versions compiled for broader ARM compatibility.
+
+yolo26m and above are expected to fail on the 4 GB RAM ceiling — the runner
+reports the error and continues.
 
 ```bash
 DEVICE_PROFILE=$(pwd)/edge/profiles/rpi4.yaml jupyter lab --no-browser --port=8888
@@ -219,61 +240,27 @@ DEVICE_PROFILE=$(pwd)/edge/profiles/rpi4.yaml jupyter lab --no-browser --port=88
 ### Jetson Nano (JetPack 4.x)
 
 **Profile:** `edge/profiles/jetson_nano.yaml`
-**Backend:** TensorRT (Maxwell GPU, 4 GB shared)
-**Models:** `.engine` — **must be compiled on the Nano itself**
+**Backend:** TensorRT FP16 (Maxwell GPU, 4 GB shared)
+**Models:** `.engine` (compiled on-device via `edge/export_tensorrt.py`)
+**Setup guide:** [`edge/JetsonNano_SETUP.md`](edge/JetsonNano_SETUP.md)
 
-#### Setup on the Nano
-
-```bash
-# Enable max performance
-sudo /usr/bin/jetson_clocks
-sudo nvpmodel -m 0
-
-# Python 3.8 venv (JetPack 4.x ships Python 3.6 as system default)
-sudo apt-get install -y python3.8 python3.8-venv python3.8-dev
-python3.8 -m venv ~/bench-venv && source ~/bench-venv/bin/activate
-pip install --upgrade pip setuptools wheel
-
-# PyTorch for JetPack 4.x (NVIDIA wheel — not on PyPI)
-# Download from https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
-pip install torch-<version>-cp38-cp38-linux_aarch64.whl
-
-# torchvision must be built from source to match the JetPack CUDA version
-sudo apt-get install -y libjpeg-dev zlib1g-dev
-pip install Cython
-git clone --branch v0.15.2 https://github.com/pytorch/vision torchvision
-cd torchvision && python setup.py install && cd ..
-
-# Project dependencies (cv2 via system symlink on JetPack)
-pip install ultralytics lap motmetrics pandas matplotlib psutil jupyterlab
-ln -s /usr/lib/python3/dist-packages/cv2.cpython-*.so \
-      ~/bench-venv/lib/python3.8/site-packages/cv2.so
-
-git clone <repo-url> && cd yolo26-track-edge-benchmark
-pip install -e .
-```
-
-#### Export TensorRT engines on the Nano
-
-```python
-# Run once on the Nano before the benchmark
-from ultralytics import YOLO
-for variant in ["yolo26n", "yolo26s", "yolo26m", "yolo26l", "yolo26x"]:
-    YOLO(f"models/{variant}.pt").export(
-        format="engine", imgsz=640, device=0, half=True
-    )
-```
+JetPack 4.6.x ships Python 3.6 and TensorRT 8.2. The system `tensorrt.so` only
+works with Python 3.6, but the ultralytics-hosted `tensorrt-8.2.0.6` wheel
+provides Python 3.8-compatible bindings. `.engine` files are compiled on-device
+(`edge/export_tensorrt.py`) with FP16 precision and fixed input shapes.
+See the setup guide for the full 15-step installation process.
 
 #### Run
 
 ```bash
-source ~/bench-venv/bin/activate
-cd yolo26-track-edge-benchmark
-DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano.yaml jupyter lab --no-browser --port=8888
+source .venv/bin/activate
+DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano.yaml jupyter lab \
+  --ip=0.0.0.0 --no-browser --port=8888
 ```
 
-> **Note:** yolo26m and above may exceed the 4 GB shared memory budget.
-> The runner logs OOM failures and continues with the remaining variants.
+> **Note:** yolo26m and above may exceed the 4 GB shared memory budget
+> during export or inference. The runner and export script log OOM failures
+> and continue with the remaining variants.
 
 ---
 

@@ -1,5 +1,7 @@
 # YOLO inference and integrated ByteTrack tracking
-ultralytics>=8.3.0
+# Pinned to 8.3.x — cross-device reproducibility requires identical NMS/post-processing.
+# The Jetson Nano (Python 3.8, torch 1.11) is limited to <8.4.0; all devices must match.
+ultralytics>=8.3.0,<8.4.0
 lap>=0.5.12
 
 # MOT evaluation metrics (MOTA, IDF1, IDSW, MT, ML)
