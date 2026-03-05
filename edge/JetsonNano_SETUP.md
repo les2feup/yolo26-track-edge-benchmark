@@ -4,9 +4,7 @@ Target: NVIDIA Jetson Nano 4GB (Seeed Studio reComputer J10), JetPack 4.6.x, Max
 
 This guide walks through the exact steps to set up the YOLO26 tracking benchmark on a Jetson Nano 4GB (Seeed reComputer J10) running JetPack 4.6.x. The Nano's GPU and CUDA 10.2 environment require a custom setup path, including manual installation of compatible PyTorch wheels.
 
-**Inference backend:** TensorRT FP16 via `.engine` files compiled on-device. The system `tensorrt.so` (Python 3.6 only) is bypassed by installing the ultralytics-hosted `tensorrt-8.2.0.6` wheel for Python 3.8.
-
-**Precision note:** Inference runs at FP16 precision via TensorRT on the Maxwell GPU. `.engine` files have a fixed input shape baked in at compile time — each model×resolution pair produces a separate engine. The export script (`edge/export_tensorrt.py`) handles the `.pt` → `.onnx` → `.engine` pipeline.
+**Inference backend:** PyTorch CUDA with `.pt` weights (FP32 precision, dynamic input shapes). TensorRT engines produce incorrect detection counts on TensorRT 8.2 / Maxwell — see [Known issues](#known-issues).
 
 All commands below run **on the Nano via SSH** unless otherwise noted.
 
@@ -26,10 +24,10 @@ JetPack 4.6.x ships a fixed software stack:
 
 Two constraints follow:
 
-1. **The system `tensorrt.so` rejects Python 3.8.** JetPack 4.6.x ships TensorRT Python bindings compiled for Python 3.6 only (pybind11 version check). **Workaround:** install the ultralytics-hosted `tensorrt-8.2.0.6-cp38` wheel, which provides compatible bindings for Python 3.8 (see Step 8b).
-2. **ultralytics requires Python >= 3.8.** The system Python 3.6 is too old. We install Python 3.8 via `apt` and use pre-built PyTorch wheels hosted by the ultralytics project (torch 1.11 + torchvision 0.12, compiled for cp38 + CUDA 10.2 + aarch64).
+1. **ultralytics requires Python >= 3.8.** The system Python 3.6 is too old. We install Python 3.8 via `apt` and use pre-built PyTorch wheels hosted by the ultralytics project (torch 1.11 + torchvision 0.12, compiled for cp38 + CUDA 10.2 + aarch64).
+2. **TensorRT engines produce incorrect results.** Both FP16 and FP32 engines compiled via `trtexec` on TensorRT 8.2 / Maxwell (sm_53) produce ~1/3 of the expected detections compared to the identical `.pt` model. This was verified experimentally: `.pt` FP32 gives 6 detections (matching the desktop baseline) while `.engine` FP32 gives only 2. The root cause is in the ONNX→TensorRT graph compilation, not precision.
 
-**Result:** Inference runs via TensorRT FP16 on `.engine` files compiled on-device. The export pipeline (`.pt` → `.onnx` → `.engine`) is handled by `edge/export_tensorrt.py`.
+**Result:** Inference runs via PyTorch CUDA on `.pt` weights at FP32 precision. No model compilation step — the same `.pt` file runs at any resolution.
 
 ---
 
@@ -180,30 +178,6 @@ If `torch.cuda.is_available()` returns `False`, something is wrong — do NOT pr
 
 ---
 
-## Step 8b — Install TensorRT Python bindings
-
-The system `tensorrt.so` only works with Python 3.6. Install the ultralytics-hosted wheel that provides Python 3.8-compatible bindings for the same TensorRT 8.2 version shipped with JetPack 4.6.x.
-
-**Important:** If a previous setup attempt symlinked the system tensorrt into the venv (like the OpenCV symlink in Step 9), remove it first — the system bindings are Python 3.6 only:
-
-```bash
-# Remove stale symlink to system Python 3.6 tensorrt (if present)
-SITE=$(python -c "import site; print(site.getsitepackages()[0])")
-rm -f "$SITE/tensorrt"   # symlink, not a directory
-
-pip install "https://github.com/ultralytics/assets/releases/download/v0.0.0/tensorrt-8.2.0.6-cp38-none-linux_aarch64.whl"
-```
-
-Verify:
-```bash
-python -c "import tensorrt; print(f'TensorRT {tensorrt.__version__}')"
-# Expected: TensorRT 8.2.0.6
-```
-
-This unblocks `import tensorrt` so ultralytics can load `.engine` files for inference.
-
----
-
 ## Step 9 — Symlink system OpenCV
 
 JetPack's system OpenCV is built with CUDA support. The pip `opencv-python` package is CPU-only and will conflict. Symlink the system build into the venv instead:
@@ -221,7 +195,6 @@ python -c "import cv2; print(f'OpenCV {cv2.__version__}')"
 ## Step 10 — Install project dependencies
 
 ```bash
-pip install onnx onnxslim
 pip install -r edge/requirements-jetson.txt
 pip install -e .
 ```
@@ -230,66 +203,26 @@ The `requirements-jetson.txt` pins all packages to versions compatible with Pyth
 
 ---
 
-## Step 11 — Install ONNX runtime (aarch64 wheel)
+## Step 11 — Quick inference test
 
-The ONNX runtime GPU wheel must be installed **after** all other dependencies. ultralytics auto-installs a CPU-only `onnxruntime` (1.19.x) from PyPI which overwrites the GPU version. PyPI has no `onnxruntime-gpu` wheel for aarch64/cp38, so we install the ultralytics-hosted version manually as the final step.
-
-```bash
-pip uninstall -y onnxruntime onnxruntime-gpu 2>/dev/null
-pip install "https://github.com/ultralytics/assets/releases/download/v0.0.0/onnxruntime_gpu-1.8.0-cp38-cp38-linux_aarch64.whl"
-```
-
-Verify:
-```bash
-python -c "import onnxruntime; print(f'onnxruntime {onnxruntime.__version__}'); print(onnxruntime.get_available_providers())"
-# Expected: onnxruntime 1.8.0, ['CUDAExecutionProvider', 'CPUExecutionProvider']
-```
-
-If you see version 1.19.x or only `CPUExecutionProvider`, repeat the uninstall + install above.
-
----
-
-## Step 12 — Export TensorRT engines
-
-Compile `.engine` files on-device. Each model×resolution pair produces a separate engine with a fixed input shape baked in at compile time. The export pipeline is `.pt` → `.onnx` → `.engine` (FP16):
-
-```bash
-# Export all variants (yolo26n through yolo26x) at 640px and 576px
-python edge/export_tensorrt.py
-
-# Or export a single variant for a quick test
-python edge/export_tensorrt.py --model yolo26n
-```
-
-Expected output in `models/`:
-```
-yolo26n.engine        yolo26n_576.engine
-yolo26s.engine        yolo26s_576.engine
-...
-```
-
-Larger models (yolo26m and above) may OOM during export — the script logs failures and continues. A summary is written to `edge/export_results_jetson.csv`.
-
----
-
-## Step 13 — Quick inference test
-
-Verify that `.engine` models load and run on the Maxwell GPU:
+Verify that `.pt` models run on the Maxwell GPU at multiple resolutions:
 
 ```bash
 python -c "
 from ultralytics import YOLO
-model = YOLO('models/yolo26n.engine')
-r = model.predict('data/MOT17/train/MOT17-09-SDP/img1/000001.jpg', device=0, verbose=False)
-print(f'TensorRT engine: OK — {len(r[0].boxes)} detections')
+model = YOLO('models/yolo26n.pt')
+r = model.predict('data/MOT17/train/MOT17-09-SDP/img1/000001.jpg', imgsz=640, device=0, verbose=False)
+print(f'640px: {len(r[0].boxes)} det, confs: {[round(c,3) for c in r[0].boxes.conf.tolist()]}')
+r = model.predict('data/MOT17/train/MOT17-09-SDP/img1/000001.jpg', imgsz=576, device=0, verbose=False)
+print(f'576px: {len(r[0].boxes)} det, confs: {[round(c,3) for c in r[0].boxes.conf.tolist()]}')
 "
 ```
 
-If `import tensorrt` fails, revisit Step 8b. If CUDA is not available, revisit Step 8.
+Both resolutions should produce detections. Expected: ~6 detections at 640px matching the desktop baseline. If CUDA is not available, revisit Step 8.
 
 ---
 
-## Step 14 — Run the benchmark
+## Step 12 — Run the benchmark
 
 Verify performance mode is active before starting:
 ```bash
@@ -322,7 +255,7 @@ Connect from the host browser using the URL printed in the terminal.
 
 ---
 
-## Step 15 — Retrieve results
+## Step 13 — Retrieve results
 
 From the **development machine**:
 
@@ -338,9 +271,7 @@ Results are tagged with `_jetson_nano` suffix and can be processed by notebooks 
 
 ## Known issues
 
-**System `tensorrt.so` vs pip wheel**: JetPack 4.6.x ships `tensorrt.so` compiled for Python 3.6 only. Do NOT try to `import tensorrt` without first installing the ultralytics-hosted `tensorrt-8.2.0.6-cp38` wheel (Step 8b). The PyPI `tensorrt` package is x86_64/CUDA 13 only — do NOT install it either.
-
-**FP16 vs FP32 precision**: The Jetson Nano runs TensorRT FP16 inference, while the RPi 4 and RPi 5 CPU backends run FP32. Desktop CUDA also runs FP32 (via `.pt` weights). FP16 reduces latency and memory but introduces small numerical differences in near-threshold detections compared to FP32 backends.
+**TensorRT engines produce incorrect detection counts**: Both FP16 and FP32 `.engine` files compiled via `trtexec` on TensorRT 8.2 / Maxwell (sm_53) produce ~1/3 of the expected detections. Verified experimentally: `.pt` FP32 → 6 detections (matching desktop), `.engine` FP32 → 2 detections on the same frame. The root cause is in the ONNX→TensorRT graph compilation on TensorRT 8.2, not precision. Additionally, ultralytics 8.4.19 exports ONNX graphs with a `Mod` op that TensorRT 8.2 cannot parse. The ultralytics-hosted `tensorrt-8.2.0.6-cp38` wheel is available for `import tensorrt` but is not used in this benchmark due to the detection loss.
 
 **`onnxruntime` version conflict**: ultralytics auto-installs `onnxruntime` 1.19.x (CPU-only) from PyPI, overwriting the GPU-enabled 1.8.0 wheel. Always install onnxruntime-gpu 1.8.0 *after* ultralytics and its transitive dependencies (Step 11). Verify with `python -c "import onnxruntime; print(onnxruntime.__version__, onnxruntime.get_available_providers())"`.
 
@@ -352,9 +283,9 @@ This is added to the venv activation script in Step 7. If you created the venv b
 
 **`jetson_clocks` resets on reboot**: Run `sudo nvpmodel -m 0 && sudo jetson_clocks` after each power cycle, or enable the systemd service (`sudo systemctl enable jetson_clocks`). Verify with `jtop` — status should show `Jetson Clocks: active`.
 
-**ultralytics version pinning**: All devices must use the same ultralytics minor version (8.3.x) for comparable detection counts. NMS and post-processing logic changed between 8.3.x and 8.4.x, producing measurably different detection rates on identical inputs and weights. The Jetson is limited to `<8.4.0` (Python 3.8 compatibility), so all devices pin to `ultralytics>=8.3.0,<8.4.0`. If a device was set up with 8.4.x, downgrade with `pip install 'ultralytics>=8.3.0,<8.4.0'` and re-run.
+**ultralytics version pinning**: All devices pin `ultralytics==8.4.19` for cross-device reproducibility. NMS and post-processing logic differs between versions. ultralytics 8.4.19 is compatible with Python 3.8.
 
-**PyTorch version differences across devices**: The Jetson Nano runs torch 1.11 (the only available cp38/CUDA 10.2/aarch64 wheel), while the RPi 4 uses torch 2.0 (Miniforge, ARMv8.0-A compatible) and the RPi 5 / desktop may use torch 2.x+. Different torch versions can produce small numerical differences in floating-point operations, affecting detection counts at the margins (near-threshold boxes may be kept or dropped differently). This is an inherent limitation of cross-device benchmarking — each platform's hardware constraints dictate the available PyTorch wheel. The ultralytics pin controls the higher-level post-processing path; the torch-level numerical variation is documented but cannot be eliminated.
+**PyTorch version differences across devices**: The Jetson Nano runs torch 1.11 (the only available cp38/CUDA 10.2/aarch64 wheel), while the RPi 4 uses torch 2.0 (Miniforge, ARMv8.0-A compatible) and the RPi 5 / desktop may use torch 2.x+. Verified experimentally: `.pt` FP32 produces identical detections (6 det, matching confidences to 3 decimal places) across torch 1.11 and torch 2.x, so this is not a practical concern for this model.
 
 **`motmetrics` + NumPy 2.x**: Not an issue — NumPy is pinned to 1.x in `requirements-jetson.txt`.
 

@@ -3,22 +3,14 @@
 # Prerequisites (installed separately via wheels, NOT from PyPI):
 #   torch==1.11.0       — ultralytics-hosted cp38 aarch64 wheel
 #   torchvision==0.12.0 — ultralytics-hosted cp38 aarch64 wheel
-#   tensorrt==8.2.0.6   — ultralytics-hosted cp38 aarch64 wheel (Step 8b)
 #   opencv (cv2)        — system JetPack build, symlinked into venv
 #
+# All version ceilings below are dictated by torch 1.11 + NumPy 1.x + Python 3.8.
 # See edge/JetsonNano_SETUP.md for full installation instructions.
 
-# ONNX intermediate format (required for TensorRT export path: .pt → .onnx → .engine)
-onnx>=1.12.0
-onnxslim>=0.1.0
-
-# onnxruntime-gpu — no PyPI wheel for aarch64/cp38; install separately from
-# ultralytics-hosted wheel (see JetsonNano_SETUP.md Step 11).
-# IMPORTANT: ultralytics auto-installs onnxruntime 1.19.x (CPU-only) which
-# overwrites onnxruntime-gpu 1.8.0.  Always reinstall the GPU wheel last.
-
 # YOLO inference and integrated ByteTrack tracking
-ultralytics>=8.3.0,<8.4.0
+# Pinned to match all devices — cross-device reproducibility requires identical NMS/post-processing.
+ultralytics==8.4.19
 lap>=0.5.12
 
 # MOT evaluation metrics (MOTA, IDF1, IDSW, MT, ML)

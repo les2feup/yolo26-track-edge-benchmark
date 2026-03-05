@@ -68,14 +68,7 @@ def track_continuity(csv_path: Path, seq_dir: Path) -> dict:
             "mostly_tracked_ratio":  float,  # primary continuity signal
         }
     """
-    from benchmark.mot_gt import load_gt  # local import avoids circular dependency risk
-
-    m           = compute_mot_metrics(csv_path, seq_dir)
-    n_gt_tracks = load_gt(seq_dir)["track_id"].nunique()
-
-    # Mostly Tracked: fraction of GT tracks with >= 80% detection coverage.
-    # Shares the same GT track denominator as idsw_per_gt_track for consistency.
-    mostly_tracked_ratio = m["mostly_tracked"] / n_gt_tracks if n_gt_tracks > 0 else 0.0
+    m = compute_mot_metrics(csv_path, seq_dir)
 
     return {
         "num_switches":          int(m["num_switches"]),
@@ -83,7 +76,7 @@ def track_continuity(csv_path: Path, seq_dir: Path) -> dict:
         "frag_ratio":            float(m["frag_ratio"]),
         "total_initiated":       int(m["total_initiated"]),
         "short_tracks_abs":      int(m["short_tracks_abs"]),
-        "mostly_tracked_ratio":  float(mostly_tracked_ratio),
+        "mostly_tracked_ratio":  float(m["mostly_tracked_ratio"]),
     }
 
 

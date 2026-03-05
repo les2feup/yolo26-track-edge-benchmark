@@ -64,19 +64,23 @@ def compute_mot_metrics(raw_csv: Path, seq_dir: Path) -> dict:
     # real people the tracker found but then lost, not false-positive track churn.
     frag_stats = _fragmentation_ratio(raw_df, n_gt_tracks, matched_pred_ids)
 
+    mostly_tracked     = int(summary.loc["seq", "mostly_tracked"])
+    mostly_tracked_ratio = mostly_tracked / n_gt_tracks if n_gt_tracks > 0 else float("nan")
+
     return {
-        "mota":              float(summary.loc["seq", "mota"]),
-        "idf1":              float(summary.loc["seq", "idf1"]),
-        "num_switches":      num_switches,
-        "idsw_per_gt_track": idsw_per_gt,
-        "mostly_tracked":    int(summary.loc["seq", "mostly_tracked"]),
-        "mostly_lost":       int(summary.loc["seq", "mostly_lost"]),
-        "frag_ratio":        frag_stats.ratio,
-        "total_initiated":   frag_stats.total_initiated,
-        "short_tracks_abs":  frag_stats.short_tracks_abs,
-        "mean_inference_ms": mean_ms,
-        "fps":               fps,
-        "peak_mem_mb":       peak_mem_mb,
+        "mota":                float(summary.loc["seq", "mota"]),
+        "idf1":                float(summary.loc["seq", "idf1"]),
+        "num_switches":        num_switches,
+        "idsw_per_gt_track":   idsw_per_gt,
+        "mostly_tracked":      mostly_tracked,
+        "mostly_tracked_ratio": mostly_tracked_ratio,
+        "mostly_lost":         int(summary.loc["seq", "mostly_lost"]),
+        "frag_ratio":          frag_stats.ratio,
+        "total_initiated":     frag_stats.total_initiated,
+        "short_tracks_abs":    frag_stats.short_tracks_abs,
+        "mean_inference_ms":   mean_ms,
+        "fps":                 fps,
+        "peak_mem_mb":         peak_mem_mb,
     }
 
 

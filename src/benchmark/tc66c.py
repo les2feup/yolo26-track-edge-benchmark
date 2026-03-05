@@ -374,3 +374,59 @@ def summarise_readings(df, trim_s: float = 5.0) -> dict:
         "min_W":     float(trimmed.min()),
         "n_samples": int(len(trimmed)),
     }
+
+
+def trim_warmup(df, warmup_s: float):
+    """Discard the first *warmup_s* seconds from a power recording.
+
+    Returns a copy of *df* containing only rows after the warm-up window.
+    If the recording is shorter than *warmup_s*, returns the full DataFrame.
+    """
+    import pandas as pd
+
+    ts = pd.to_datetime(df["timestamp"], unit="s")
+    t0 = ts.iloc[0] + pd.Timedelta(seconds=warmup_s)
+    out = df.loc[ts >= t0].copy()
+    return out if not out.empty else df.copy()
+
+
+def summarise_across_runs(run_summaries: list[dict]) -> dict:
+    """Aggregate per-run power summaries into cross-run statistics.
+
+    Parameters
+    ----------
+    run_summaries : list[dict]
+        Each dict is the output of ``summarise_readings()`` (must have ``mean_W``).
+
+    Returns
+    -------
+    dict with keys: mean_W, std_W, ci95_W, median_W, iqr_W, peak_W, n_runs
+    """
+    import numpy as np
+    from scipy import stats as sp_stats
+
+    means = np.array([s["mean_W"] for s in run_summaries])
+    peaks = np.array([s["peak_W"] for s in run_summaries])
+    n = len(means)
+
+    mean_of_means = float(np.mean(means))
+    std_of_means = float(np.std(means, ddof=1)) if n > 1 else 0.0
+
+    # 95 % CI half-width using Student-t
+    if n > 1:
+        t_crit = float(sp_stats.t.ppf(0.975, df=n - 1))
+        ci95 = t_crit * std_of_means / np.sqrt(n)
+    else:
+        ci95 = float("nan")
+
+    q25, q50, q75 = float(np.percentile(means, 25)), float(np.median(means)), float(np.percentile(means, 75))
+
+    return {
+        "mean_W":   round(mean_of_means, 4),
+        "std_W":    round(std_of_means, 4),
+        "ci95_W":   round(float(ci95), 4),
+        "median_W": round(q50, 4),
+        "iqr_W":    round(float(q75 - q25), 4),
+        "peak_W":   round(float(np.max(peaks)), 4),
+        "n_runs":   n,
+    }

@@ -77,11 +77,11 @@ def run_sequence(
     model_name   = Path(model.model_name).name
     tracker_path = tracker if tracker is not None else TRACKER
 
-    # TensorRT/engine models may not expose PyTorch parameters — fall back
-    # to checking model.device when parameters() is empty.
+    # TensorRT/engine models don't expose PyTorch parameters — model.model
+    # is the engine path string, not an nn.Module.  Fall back to model.device.
     try:
         _on_cuda = next(model.model.parameters()).is_cuda
-    except StopIteration:
+    except (StopIteration, AttributeError):
         _on_cuda = hasattr(model, "device") and "cuda" in str(model.device)
     use_cuda = torch.cuda.is_available() and _on_cuda
     if use_cuda:

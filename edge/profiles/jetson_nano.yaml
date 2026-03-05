@@ -2,9 +2,10 @@
 # Maxwell GPU (128 CUDA cores, sm_53), 4 GB LPDDR4 shared CPU/GPU memory
 # JetPack 4.6.x: CUDA 10.2, cuDNN 8.0, TensorRT 8.2, Python 3.8 (via apt)
 #
-# TensorRT FP16 via .engine files compiled on-device (edge/export_tensorrt.py).
-# The system tensorrt.so (Python 3.6) is bypassed by the ultralytics-hosted
-# tensorrt-8.2.0.6 wheel for Python 3.8 (see JetsonNano_SETUP.md Step 8b).
+# PyTorch CUDA FP32 via .pt weights — same precision as the desktop baseline.
+# TensorRT engines (both FP16 and FP32) produce incorrect detection counts on
+# TensorRT 8.2 / Maxwell (sm_53) — verified experimentally (2 det vs 6 expected).
+# See JetsonNano_SETUP.md Known Issues for details.
 #
 # Environment setup: see edge/JetsonNano_SETUP.md
 
@@ -13,26 +14,18 @@ device_label: "Jetson Nano (Seeed reComputer J10, JetPack 4.6.x)"
 os: jetpack
 
 torch_device: "cuda:0"
-backend: tensorrt
+backend: cuda
 
-# .engine files compiled on-device via edge/export_tensorrt.py.
-# TensorRT FP16 on Maxwell GPU — fixed input shape per engine file.
-# Resolution encoded in filename: no suffix = 640px, _576 = 576px.
+# .pt weights loaded via ultralytics YOLO() → PyTorch CUDA on Maxwell GPU.
+# FP32 precision — dynamic input shapes, same .pt file runs at any resolution.
 model_variants:
-  # 640px engines
-  - yolo26n.engine
-  - yolo26s.engine
-  - yolo26m.engine      # may OOM during export (4 GB shared memory)
-  - yolo26l.engine      # likely OOM — attempted for completeness
-  - yolo26x.engine      # likely OOM — attempted for completeness
-  # 576px engines
-  - yolo26n_576.engine
-  - yolo26s_576.engine
-  - yolo26m_576.engine
-  - yolo26l_576.engine
-  - yolo26x_576.engine
+  - yolo26n.pt
+  - yolo26s.pt
+  - yolo26m.pt      # may OOM at runtime (4 GB shared memory)
+  - yolo26l.pt      # likely OOM — attempted for completeness
+  - yolo26x.pt      # likely OOM — attempted for completeness
 
-model_format: engine
+model_format: pt
 
 resolutions: [640, 576]
 

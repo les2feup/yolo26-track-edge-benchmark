@@ -14,7 +14,7 @@ edge/
   export_hailo.py       ONNX → HEF compiler (Docker, offline)
   export_tensorrt.py    .pt → .onnx → .engine (on-device, reference only)
   collect_calib.py      Calibration image sampler
-  JetsonNano_SETUP.md   Jetson Nano 14-step setup guide
+  JetsonNano_SETUP.md   Jetson Nano 13-step setup guide
   RPi4_IMPLEMENTATION.md  RPi 4 Miniforge setup guide
 models/         Model weights (.pt / .hef / .engine — not tracked)
 notebooks/      00 setup · 01 profiling · 02 resolution · 03 figures · 04 power
@@ -127,14 +127,13 @@ DEVICE_PROFILE=$(pwd)/edge/profiles/<profile>.yaml jupyter lab --no-browser --po
 
 ## Cross-device reproducibility
 
-All devices pin `ultralytics>=8.3.0,<8.4.0` — NMS/post-processing changed in
-8.4.x, producing different detection counts on identical inputs.
+All devices pin `ultralytics==8.4.19` — NMS/post-processing logic differs
+between versions.
 
-PyTorch versions and precision vary across devices: the Jetson Nano runs
-TensorRT FP16 (torch 1.11, cp38/CUDA 10.2), CPU-only devices (RPi 4/5) run
-FP32 (torch 2.0+), and the desktop runs FP32 via CUDA or CPU. Small numerical
-differences in near-threshold detections are expected and documented as a
-known limitation.
+All devices run FP32 inference (PyTorch CUDA on Jetson, CPU on RPi 4/5,
+CUDA or CPU on desktop). Verified experimentally: `.pt` FP32 produces
+identical detection counts and confidences across torch 1.11 (Jetson) and
+torch 2.x (RPi/desktop) on the same inputs.
 
 ---
 
@@ -240,15 +239,16 @@ DEVICE_PROFILE=$(pwd)/edge/profiles/rpi4.yaml jupyter lab --no-browser --port=88
 ### Jetson Nano (JetPack 4.x)
 
 **Profile:** `edge/profiles/jetson_nano.yaml`
-**Backend:** TensorRT FP16 (Maxwell GPU, 4 GB shared)
-**Models:** `.engine` (compiled on-device via `edge/export_tensorrt.py`)
+**Backend:** PyTorch CUDA FP32 (Maxwell GPU, 4 GB shared)
+**Models:** `.pt`
 **Setup guide:** [`edge/JetsonNano_SETUP.md`](edge/JetsonNano_SETUP.md)
 
-JetPack 4.6.x ships Python 3.6 and TensorRT 8.2. The system `tensorrt.so` only
-works with Python 3.6, but the ultralytics-hosted `tensorrt-8.2.0.6` wheel
-provides Python 3.8-compatible bindings. `.engine` files are compiled on-device
-(`edge/export_tensorrt.py`) with FP16 precision and fixed input shapes.
-See the setup guide for the full 15-step installation process.
+JetPack 4.6.x ships CUDA 10.2 and TensorRT 8.2 on the Maxwell GPU. TensorRT
+engines (both FP16 and FP32) produce incorrect detection counts due to the
+ONNX→TensorRT graph compilation on TRT 8.2 / sm_53 — verified experimentally.
+Instead, inference runs via PyTorch CUDA with `.pt` weights at FP32 precision,
+matching the desktop baseline exactly. See the setup guide for the full 13-step
+installation process.
 
 #### Run
 
@@ -258,9 +258,8 @@ DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano.yaml jupyter lab \
   --ip=0.0.0.0 --no-browser --port=8888
 ```
 
-> **Note:** yolo26m and above may exceed the 4 GB shared memory budget
-> during export or inference. The runner and export script log OOM failures
-> and continue with the remaining variants.
+> **Note:** yolo26m and above may exceed the 4 GB shared memory budget.
+> The runner logs OOM failures and continues with the remaining variants.
 
 ---
 

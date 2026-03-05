@@ -67,7 +67,9 @@ def load_profile(path: str | Path | None = None) -> DeviceProfile:
         resolved = Path(path)
         if not resolved.is_absolute():
             resolved = _PROFILES_DIR / resolved
-        return _from_yaml(resolved)
+        profile = _from_yaml(resolved)
+        apply_device_workarounds(profile)
+        return profile
 
     # Auto-detect: try to match hostname to a known profile
     hostname = socket.gethostname().lower()
@@ -83,7 +85,9 @@ def load_profile(path: str | Path | None = None) -> DeviceProfile:
     for fragment, yaml_name in candidates.items():
         if fragment in hostname:
             print(f"[device_profile] auto-detected '{yaml_name}' from hostname '{hostname}'")
-            return _from_yaml(_PROFILES_DIR / yaml_name)
+            profile = _from_yaml(_PROFILES_DIR / yaml_name)
+            apply_device_workarounds(profile)
+            return profile
 
     # Desktop fallback — not an edge profile, used for local development
     print("[device_profile] no profile detected — using desktop fallback")
@@ -190,6 +194,51 @@ def try_load_model(model_name: str, device: str) -> tuple:
         return None, f"RuntimeError loading {model_name}: {exc}"
     except Exception as exc:  # noqa: BLE001
         return None, f"unexpected error loading {model_name}: {type(exc).__name__}: {exc}"
+
+
+def apply_device_workarounds(profile: DeviceProfile) -> None:
+    """Apply device-specific environment workarounds before importing frameworks.
+
+    Jetson Nano (JetPack 4.6.x): preload libgomp to prevent ultralytics segfault.
+    The system OpenMP library must be loaded before NumPy/torch pull in their own
+    copy.  Setting LD_PRELOAD via os.environ works because ultralytics triggers
+    the libgomp dlopen() lazily — the dynamic linker honours the variable at
+    dlopen time, not only at process start.
+
+    Must be called before any ultralytics/torch import.  No-op for non-Jetson profiles.
+    """
+    if profile.device_id == "jetson_nano":
+        _libgomp = "/usr/lib/aarch64-linux-gnu/libgomp.so.1"
+        existing = os.environ.get("LD_PRELOAD", "")
+        if _libgomp not in existing:
+            os.environ["LD_PRELOAD"] = (
+                f"{existing}:{_libgomp}" if existing else _libgomp
+            )
+
+
+def apply_thread_pinning(profile: DeviceProfile) -> None:
+    """Pin CPU/BLAS thread counts for deterministic power measurements.
+
+    Only active for the RPi 4 profile (quad-core Cortex-A72, CPU-only).
+    Must be called before any torch/cv2 workload begins; env vars are
+    set before importing torch so the BLAS backends pick them up.
+    No-op for all other profiles.
+    """
+    if profile.device_id != "rpi4":
+        return
+
+    os.environ["OMP_NUM_THREADS"] = "4"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+    os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
+    import torch
+    import cv2
+
+    torch.set_num_threads(4)
+    torch.set_num_interop_threads(1)
+    cv2.setNumThreads(1)
 
 
 def _desktop_fallback() -> DeviceProfile:
