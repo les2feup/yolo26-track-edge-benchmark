@@ -101,62 +101,72 @@ def run_sequence(
     records = []
 
     t_loop_start = time.perf_counter()
+    frame_idx = 0
+    budget_expired = False
 
-    for frame_idx, img_path in enumerate(frame_paths):
-        # Time-budget guard: stop inference after max_duration_s elapsed
-        if max_duration_s is not None and (time.perf_counter() - t_loop_start) >= max_duration_s:
+    # Loop over the sequence continuously until max_duration_s expires.
+    # Single-pass when max_duration_s is None (standard benchmark mode).
+    while not budget_expired:
+        for img_path in frame_paths:
+            if max_duration_s is not None and (time.perf_counter() - t_loop_start) >= max_duration_s:
+                budget_expired = True
+                break
+
+            frame_id  = frame_idx + 1   # MOT17 uses 1-indexed frame IDs
+            frame_idx += 1
+            frame_bgr = cv2.imread(str(img_path))
+            if clahe:
+                frame_bgr = preprocess_frame(frame_bgr)
+
+            t0      = time.perf_counter()
+            results = model.track(
+                frame_bgr,
+                persist=True,
+                tracker=tracker_path,
+                conf=CONF,
+                classes=CLASSES,
+                imgsz=imgsz,
+                device=device_arg,
+                verbose=False,
+            )
+            t1 = time.perf_counter()
+
+            # Memory snapshot: GPU peak (cumulative since reset) or CPU RSS
+            if use_cuda:
+                mem_bytes = torch.cuda.max_memory_allocated()
+            else:
+                mem_bytes = process.memory_info().rss
+
+            boxes = results[0].boxes
+            if boxes is not None and boxes.id is not None:
+                track_ids  = boxes.id.int().cpu().tolist()
+                bboxes     = boxes.xyxy.cpu().tolist()
+                confs      = boxes.conf.cpu().tolist()
+                footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
+            else:
+                track_ids = bboxes = confs = footpoints = []
+
+            # Skip warm-up frames for timing records but still run inference
+            # to allow ByteTrack to build its internal track state.
+            inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
+
+            records.append({
+                "frame_id":     frame_id,
+                "inference_ms": inference_ms,
+                "n_detections": len(track_ids),
+                "track_ids":    json.dumps(track_ids),
+                "bboxes_xyxy":  json.dumps(bboxes),
+                "confs":        json.dumps(confs),
+                "footpoints":   json.dumps(footpoints),
+                "mem_bytes":    mem_bytes,
+                "imgsz":        imgsz,
+                "model":        model_name,
+                "seq":          seq_name,
+            })
+
+        # Single-pass mode: no time budget → exit after one pass
+        if max_duration_s is None:
             break
-
-        frame_id  = frame_idx + 1   # MOT17 uses 1-indexed frame IDs
-        frame_bgr = cv2.imread(str(img_path))
-        if clahe:
-            frame_bgr = preprocess_frame(frame_bgr)
-
-        t0      = time.perf_counter()
-        results = model.track(
-            frame_bgr,
-            persist=True,
-            tracker=tracker_path,
-            conf=CONF,
-            classes=CLASSES,
-            imgsz=imgsz,
-            device=device_arg,
-            verbose=False,
-        )
-        t1 = time.perf_counter()
-
-        # Memory snapshot: GPU peak (cumulative since reset) or CPU RSS
-        if use_cuda:
-            mem_bytes = torch.cuda.max_memory_allocated()
-        else:
-            mem_bytes = process.memory_info().rss
-
-        boxes = results[0].boxes
-        if boxes is not None and boxes.id is not None:
-            track_ids  = boxes.id.int().cpu().tolist()
-            bboxes     = boxes.xyxy.cpu().tolist()
-            confs      = boxes.conf.cpu().tolist()
-            footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
-        else:
-            track_ids = bboxes = confs = footpoints = []
-
-        # Skip warm-up frames for timing records but still run inference
-        # to allow ByteTrack to build its internal track state.
-        inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
-
-        records.append({
-            "frame_id":     frame_id,
-            "inference_ms": inference_ms,
-            "n_detections": len(track_ids),
-            "track_ids":    json.dumps(track_ids),
-            "bboxes_xyxy":  json.dumps(bboxes),
-            "confs":        json.dumps(confs),
-            "footpoints":   json.dumps(footpoints),
-            "mem_bytes":    mem_bytes,
-            "imgsz":        imgsz,
-            "model":        model_name,
-            "seq":          seq_name,
-        })
 
     df = pd.DataFrame(records)
     df.to_csv(out_csv, index=False)
