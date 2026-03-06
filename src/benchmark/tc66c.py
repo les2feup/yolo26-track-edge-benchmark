@@ -57,14 +57,15 @@ _CIPHER = AES.new(_AES_KEY, AES.MODE_ECB)
 # ── Protocol constants ──────────────────────────────────────────────────────
 BLOCK_SIZE = 64
 TOTAL_PAYLOAD = 3 * BLOCK_SIZE  # 192 bytes
-CMD_GETVA = b"bgetva\r\n"
+CMD_GETVA = b"bgetva\r\n"       # BLE transport
+CMD_GETVA_USB = b"getva\r\n"    # USB serial transport (no 'b' prefix)
 
 # ── Expected block headers after decryption ─────────────────────────────────
 _HEADERS = (b"pac1", b"pac2", b"pac3")
 
 
 # ── Measurement dataclass ───────────────────────────────────────────────────
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class TC66CReading:
     """Single measurement snapshot from the TC66C."""
 
@@ -338,6 +339,89 @@ async def collect(
     return readings
 
 
+# ── USB serial acquisition loop ───────────────────────────────────────────
+def collect_serial(
+    port: str = "/dev/ttyACM0",
+    duration_s: float = 60.0,
+    interval_s: float = 1.0,
+    csv_path: Path | None = None,
+    on_reading: Callable[[TC66CReading], None] | None = None,
+    stop_event=None,
+    baudrate: int = 115200,
+) -> list[TC66CReading]:
+    """Poll TC66C over USB serial (micro-USB port).
+
+    Same protocol as BLE but uses ``getva\\r\\n`` (no 'b' prefix) and
+    reads 192-byte AES-ECB responses synchronously via pyserial.
+
+    Parameters
+    ----------
+    port : str
+        Serial device path (e.g. ``/dev/ttyACM0``).
+    duration_s, interval_s, csv_path, on_reading, stop_event
+        Identical semantics to :func:`collect`.
+    baudrate : int
+        Serial baud rate (default 115200).
+    """
+    import serial as pyserial
+
+    readings: list[TC66CReading] = []
+
+    csv_file = None
+    writer = None
+    if csv_path is not None:
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        csv_file = open(csv_path, "a", newline="")
+        writer = csv.writer(csv_file)
+        if csv_path.stat().st_size == 0:
+            writer.writerow(TC66CReading.__dataclass_fields__.keys())
+
+    try:
+        ser = pyserial.Serial(port, baudrate=baudrate, timeout=3)
+        time.sleep(0.2)
+        t_start = time.monotonic()
+
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                break
+            if (time.monotonic() - t_start) >= duration_s:
+                break
+
+            ser.reset_input_buffer()
+            ser.write(CMD_GETVA_USB)
+            raw = ser.read(TOTAL_PAYLOAD)
+
+            if len(raw) != TOTAL_PAYLOAD:
+                time.sleep(interval_s)
+                continue
+
+            ts = time.time()
+            plain = decrypt_payload(raw)
+
+            if not verify_headers(plain):
+                time.sleep(interval_s)
+                continue
+
+            reading = parse_reading(plain, ts=ts)
+            readings.append(reading)
+
+            if writer is not None:
+                writer.writerow(reading.csv_row)
+                csv_file.flush()
+
+            if on_reading is not None:
+                on_reading(reading)
+
+            time.sleep(interval_s)
+
+        ser.close()
+    finally:
+        if csv_file is not None:
+            csv_file.close()
+
+    return readings
+
+
 # ── Post-processing ──────────────────────────────────────────────────────────
 def summarise_readings(df, trim_s: float = 5.0) -> dict:
     """Compute power statistics from a TC66C CSV DataFrame.
@@ -373,4 +457,60 @@ def summarise_readings(df, trim_s: float = 5.0) -> dict:
         "peak_W":    float(trimmed.max()),
         "min_W":     float(trimmed.min()),
         "n_samples": int(len(trimmed)),
+    }
+
+
+def trim_warmup(df, warmup_s: float):
+    """Discard the first *warmup_s* seconds from a power recording.
+
+    Returns a copy of *df* containing only rows after the warm-up window.
+    If the recording is shorter than *warmup_s*, returns the full DataFrame.
+    """
+    import pandas as pd
+
+    ts = pd.to_datetime(df["timestamp"], unit="s")
+    t0 = ts.iloc[0] + pd.Timedelta(seconds=warmup_s)
+    out = df.loc[ts >= t0].copy()
+    return out if not out.empty else df.copy()
+
+
+def summarise_across_runs(run_summaries: list[dict]) -> dict:
+    """Aggregate per-run power summaries into cross-run statistics.
+
+    Parameters
+    ----------
+    run_summaries : list[dict]
+        Each dict is the output of ``summarise_readings()`` (must have ``mean_W``).
+
+    Returns
+    -------
+    dict with keys: mean_W, std_W, ci95_W, median_W, iqr_W, peak_W, n_runs
+    """
+    import numpy as np
+    from scipy import stats as sp_stats
+
+    means = np.array([s["mean_W"] for s in run_summaries])
+    peaks = np.array([s["peak_W"] for s in run_summaries])
+    n = len(means)
+
+    mean_of_means = float(np.mean(means))
+    std_of_means = float(np.std(means, ddof=1)) if n > 1 else 0.0
+
+    # 95 % CI half-width using Student-t
+    if n > 1:
+        t_crit = float(sp_stats.t.ppf(0.975, df=n - 1))
+        ci95 = t_crit * std_of_means / np.sqrt(n)
+    else:
+        ci95 = float("nan")
+
+    q25, q50, q75 = float(np.percentile(means, 25)), float(np.median(means)), float(np.percentile(means, 75))
+
+    return {
+        "mean_W":   round(mean_of_means, 4),
+        "std_W":    round(std_of_means, 4),
+        "ci95_W":   round(float(ci95), 4),
+        "median_W": round(q50, 4),
+        "iqr_W":    round(float(q75 - q25), 4),
+        "peak_W":   round(float(np.max(peaks)), 4),
+        "n_runs":   n,
     }

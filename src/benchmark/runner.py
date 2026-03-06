@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import time
 from pathlib import Path
@@ -37,6 +39,7 @@ def run_sequence(
     out_csv: Path,
     tracker: str | None = None,
     clahe: bool = False,
+    max_duration_s: float | None = None,
 ) -> pd.DataFrame:
     """Per-frame YOLO tracking loop for one MOT17 sequence.
 
@@ -74,63 +77,96 @@ def run_sequence(
     model_name   = Path(model.model_name).name
     tracker_path = tracker if tracker is not None else TRACKER
 
-    use_cuda = torch.cuda.is_available() and next(model.model.parameters()).is_cuda
+    # TensorRT/engine models don't expose PyTorch parameters — model.model
+    # is the engine path string, not an nn.Module.  Fall back to model.device.
+    try:
+        _on_cuda = next(model.model.parameters()).is_cuda
+    except (StopIteration, AttributeError):
+        _on_cuda = hasattr(model, "device") and "cuda" in str(model.device)
+    use_cuda = torch.cuda.is_available() and _on_cuda
     if use_cuda:
         torch.cuda.reset_peak_memory_stats()
+
+    # Explicit device for model.track() — ensures the predictor's AutoBackend
+    # runs on the correct device.  Without this, some ultralytics versions
+    # (especially on older torch/Python) fall back to CPU silently.
+    if hasattr(model, "device") and str(model.device) != "cpu":
+        device_arg = model.device
+    elif use_cuda:
+        device_arg = "cuda:0"
+    else:
+        device_arg = None
 
     process = psutil.Process()
     records = []
 
-    for frame_idx, img_path in enumerate(frame_paths):
-        frame_id  = frame_idx + 1   # MOT17 uses 1-indexed frame IDs
-        frame_bgr = cv2.imread(str(img_path))
-        if clahe:
-            frame_bgr = preprocess_frame(frame_bgr)
+    t_loop_start = time.perf_counter()
+    frame_idx = 0
+    budget_expired = False
 
-        t0      = time.perf_counter()
-        results = model.track(
-            frame_bgr,
-            persist=True,
-            tracker=tracker_path,
-            conf=CONF,
-            classes=CLASSES,
-            imgsz=imgsz,
-            verbose=False,
-        )
-        t1 = time.perf_counter()
+    # Loop over the sequence continuously until max_duration_s expires.
+    # Single-pass when max_duration_s is None (standard benchmark mode).
+    while not budget_expired:
+        for img_path in frame_paths:
+            if max_duration_s is not None and (time.perf_counter() - t_loop_start) >= max_duration_s:
+                budget_expired = True
+                break
 
-        # Memory snapshot: GPU peak (cumulative since reset) or CPU RSS
-        if use_cuda:
-            mem_bytes = torch.cuda.max_memory_allocated()
-        else:
-            mem_bytes = process.memory_info().rss
+            frame_id  = frame_idx + 1   # MOT17 uses 1-indexed frame IDs
+            frame_idx += 1
+            frame_bgr = cv2.imread(str(img_path))
+            if clahe:
+                frame_bgr = preprocess_frame(frame_bgr)
 
-        boxes = results[0].boxes
-        if boxes is not None and boxes.id is not None:
-            track_ids  = boxes.id.int().cpu().tolist()
-            bboxes     = boxes.xyxy.cpu().tolist()
-            confs      = boxes.conf.cpu().tolist()
-            footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
-        else:
-            track_ids = bboxes = confs = footpoints = []
+            t0      = time.perf_counter()
+            results = model.track(
+                frame_bgr,
+                persist=True,
+                tracker=tracker_path,
+                conf=CONF,
+                classes=CLASSES,
+                imgsz=imgsz,
+                device=device_arg,
+                verbose=False,
+            )
+            t1 = time.perf_counter()
 
-        # Skip warm-up frames for timing records but still run inference
-        # to allow ByteTrack to build its internal track state.
-        inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
+            # Memory snapshot: GPU peak (cumulative since reset) or CPU RSS
+            if use_cuda:
+                mem_bytes = torch.cuda.max_memory_allocated()
+            else:
+                mem_bytes = process.memory_info().rss
 
-        records.append({
-            "frame_id":     frame_id,
-            "inference_ms": inference_ms,
-            "n_detections": len(track_ids),
-            "track_ids":    json.dumps(track_ids),
-            "bboxes_xyxy":  json.dumps(bboxes),
-            "confs":        json.dumps(confs),
-            "footpoints":   json.dumps(footpoints),
-            "mem_bytes":    mem_bytes,
-            "imgsz":        imgsz,
-            "model":        model_name,
-            "seq":          seq_name,
-        })
+            boxes = results[0].boxes
+            if boxes is not None and boxes.id is not None:
+                track_ids  = boxes.id.int().cpu().tolist()
+                bboxes     = boxes.xyxy.cpu().tolist()
+                confs      = boxes.conf.cpu().tolist()
+                footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
+            else:
+                track_ids = bboxes = confs = footpoints = []
+
+            # Skip warm-up frames for timing records but still run inference
+            # to allow ByteTrack to build its internal track state.
+            inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
+
+            records.append({
+                "frame_id":     frame_id,
+                "inference_ms": inference_ms,
+                "n_detections": len(track_ids),
+                "track_ids":    json.dumps(track_ids),
+                "bboxes_xyxy":  json.dumps(bboxes),
+                "confs":        json.dumps(confs),
+                "footpoints":   json.dumps(footpoints),
+                "mem_bytes":    mem_bytes,
+                "imgsz":        imgsz,
+                "model":        model_name,
+                "seq":          seq_name,
+            })
+
+        # Single-pass mode: no time budget → exit after one pass
+        if max_duration_s is None:
+            break
 
     df = pd.DataFrame(records)
     df.to_csv(out_csv, index=False)

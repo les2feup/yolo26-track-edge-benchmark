@@ -11,14 +11,14 @@ backend: cpu
 
 model_variants:
   - yolo26n.pt
-  - yolo26s.pt   # ~150 MB RAM — borderline; runner will report OOM and skip if needed
-  - yolo26m.pt   # expected to fail on 4 GB — included to capture the failure boundary
+  - yolo26s.pt   
+  - yolo26m.pt   
   - yolo26l.pt
   - yolo26x.pt
 
 model_format: pt
 
-resolutions: [640, 576, 512, 384, 320]
+resolutions: [640, 576]
 
 warmup_frames: 30
 result_tag: rpi4

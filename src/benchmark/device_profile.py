@@ -67,7 +67,9 @@ def load_profile(path: str | Path | None = None) -> DeviceProfile:
         resolved = Path(path)
         if not resolved.is_absolute():
             resolved = _PROFILES_DIR / resolved
-        return _from_yaml(resolved)
+        profile = _from_yaml(resolved)
+        apply_device_workarounds(profile)
+        return profile
 
     # Auto-detect: try to match hostname to a known profile
     hostname = socket.gethostname().lower()
@@ -76,13 +78,16 @@ def load_profile(path: str | Path | None = None) -> DeviceProfile:
         "rpi5-b-hailo": "rpi5_cpu.yaml",
         "rpi4":         "rpi4.yaml",
         "jetson-nano":  "jetson_nano.yaml",
+        "les2-seed-studio-j10": "jetson_nano.yaml",
         "uno-q":        "arduino_uno_q.yaml",
         "arduinoq":     "arduino_uno_q.yaml",
     }
     for fragment, yaml_name in candidates.items():
         if fragment in hostname:
             print(f"[device_profile] auto-detected '{yaml_name}' from hostname '{hostname}'")
-            return _from_yaml(_PROFILES_DIR / yaml_name)
+            profile = _from_yaml(_PROFILES_DIR / yaml_name)
+            apply_device_workarounds(profile)
+            return profile
 
     # Desktop fallback — not an edge profile, used for local development
     print("[device_profile] no profile detected — using desktop fallback")
@@ -109,6 +114,49 @@ def _from_yaml(path: Path) -> DeviceProfile:
         result_tag=data["result_tag"],
         profile_path=path,
     )
+
+
+# Backends with fixed input shapes baked in at compile time.
+# Model files encode the resolution in the filename suffix (no suffix = 640px).
+_BAKED_RESOLUTION_BACKENDS = {"hailo", "tensorrt"}
+
+
+def baked_imgsz(model_path: str) -> int:
+    """Derive the compile-time resolution from a model filename.
+
+    Works for any backend that bakes resolution into the filename:
+        yolo26n.engine      → 640   (no suffix = canonical 640px)
+        yolo26n_576.hef     → 576
+        yolo26s_512.engine  → 512
+        yolo26n_576_hq.hef  → 576   (quality tag stripped)
+    """
+    stem = model_path.rsplit(".", 1)[0]
+    # Strip known quality-tag suffixes before resolution parsing
+    for tag in ("_hq", "_lq"):
+        if stem.endswith(tag):
+            stem = stem[: -len(tag)]
+            break
+    parts = stem.rsplit("_", 1)
+    return int(parts[-1]) if len(parts) == 2 and parts[-1].isdigit() else 640
+
+
+def iter_model_imgsz(profile: DeviceProfile):
+    """Yield (model_path, imgsz) for every benchmark condition.
+
+    For backends with baked-in resolutions (hailo, tensorrt), each model variant
+    encodes exactly one resolution — iterate model_variants and derive imgsz
+    from the filename.
+
+    For dynamic backends (cpu, cuda with .pt files), iterate the full
+    model_variants × resolutions grid.
+    """
+    if profile.backend in _BAKED_RESOLUTION_BACKENDS:
+        for mp in profile.model_variants:
+            yield mp, baked_imgsz(mp)
+    else:
+        for mp in profile.model_variants:
+            for imgsz in profile.resolutions:
+                yield mp, imgsz
 
 
 def resolve_model_path(model_name: str) -> Path:
@@ -140,7 +188,9 @@ def try_load_model(model_name: str, device: str) -> tuple:
     try:
         from ultralytics import YOLO
         model = YOLO(str(resolved))
-        model.to(device)
+        # TensorRT engines manage their own device — skip .to() for .engine files
+        if resolved.suffix != ".engine":
+            model = model.to(device)
         return model, None
     except FileNotFoundError:
         return None, f"model file not found: {model_name}"
@@ -150,6 +200,51 @@ def try_load_model(model_name: str, device: str) -> tuple:
         return None, f"RuntimeError loading {model_name}: {exc}"
     except Exception as exc:  # noqa: BLE001
         return None, f"unexpected error loading {model_name}: {type(exc).__name__}: {exc}"
+
+
+def apply_device_workarounds(profile: DeviceProfile) -> None:
+    """Apply device-specific environment workarounds before importing frameworks.
+
+    Jetson Nano (JetPack 4.6.x): preload libgomp to prevent ultralytics segfault.
+    The system OpenMP library must be loaded before NumPy/torch pull in their own
+    copy.  Setting LD_PRELOAD via os.environ works because ultralytics triggers
+    the libgomp dlopen() lazily — the dynamic linker honours the variable at
+    dlopen time, not only at process start.
+
+    Must be called before any ultralytics/torch import.  No-op for non-Jetson profiles.
+    """
+    if profile.device_id == "jetson_nano":
+        _libgomp = "/usr/lib/aarch64-linux-gnu/libgomp.so.1"
+        existing = os.environ.get("LD_PRELOAD", "")
+        if _libgomp not in existing:
+            os.environ["LD_PRELOAD"] = (
+                f"{existing}:{_libgomp}" if existing else _libgomp
+            )
+
+
+def apply_thread_pinning(profile: DeviceProfile) -> None:
+    """Pin CPU/BLAS thread counts for deterministic power measurements.
+
+    Only active for the RPi 4 profile (quad-core Cortex-A72, CPU-only).
+    Must be called before any torch/cv2 workload begins; env vars are
+    set before importing torch so the BLAS backends pick them up.
+    No-op for all other profiles.
+    """
+    if profile.device_id != "rpi4":
+        return
+
+    os.environ["OMP_NUM_THREADS"] = "4"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+    os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
+    import torch
+    import cv2
+
+    torch.set_num_threads(4)
+    torch.set_num_interop_threads(1)
+    cv2.setNumThreads(1)
 
 
 def _desktop_fallback() -> DeviceProfile:

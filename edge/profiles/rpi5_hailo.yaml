@@ -18,17 +18,17 @@ backend: hailo
 # Compilation: edge/export_hailo.py --model yolo26n.pt --hw-arch hailo8l
 model_variants:
   # Default (hailo8l @ 640px)
-  - yolo26n.hef
-  - yolo26s.hef
-  - yolo26m.hef      
-  - yolo26l.hef      
-  - yolo26x.hef      
+  - yolo26n_hq.hef
+  - yolo26s_hq.hef
+  - yolo26m_hq.hef      
+  # - yolo26l_hq.hef      
+  # - yolo26x_hq.hef      
   # 576px variants
-  - yolo26n_576.hef
-  - yolo26s_576.hef
-  - yolo26m_576.hef
-  - yolo26l_576.hef
-  - yolo26x_576.hef
+  - yolo26n_576_hq.hef
+  - yolo26s_576_hq.hef
+  - yolo26m_576_hq.hef
+  # - yolo26l_576_hq.hef
+  # - yolo26x_576_hq.hef
 
 model_format: hef
 

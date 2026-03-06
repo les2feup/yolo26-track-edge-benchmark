@@ -1,26 +1,28 @@
 # YOLO inference and integrated ByteTrack tracking
-ultralytics>=8.3.0
+# Pinned to 8.4.19 — cross-device reproducibility requires identical NMS/post-processing.
+ultralytics==8.4.19
 lap>=0.5.12
 
 # MOT evaluation metrics (MOTA, IDF1, IDSW, MT, ML)
 motmetrics>=1.4.0
-scipy>=1.13.0
+scipy>=1.7.0
 
-# Data handling
-pandas>=2.2.0
+# Data handling (pandas 2.1+ requires Python ≥3.9; 1.4+ works on 3.8)
+pandas>=1.4.0
 
-# Paper figures
-matplotlib>=3.9.0
+# Paper figures (matplotlib 3.8+ requires Python ≥3.9; 3.5+ works on 3.8)
+matplotlib>=3.5.0
 
 # Frame I/O and live preview
-opencv-python>=4.10.0
+opencv-python>=4.5.0
 
 # Jupyter notebooks
-jupyterlab>=4.2.0
-ipykernel>=6.29.0
+jupyterlab>=4.0.0
+ipykernel>=6.20.0
+ipywidgets>=8.0.0
 
 # CPU memory measurement
-psutil>=6.0.0
+psutil>=5.9.0
 
 # ByteTrack for Hailo backend (pure Python, no ultralytics dependency)
 supervision>=0.23.0
@@ -28,9 +30,10 @@ supervision>=0.23.0
 # git notebook output stripping
 nbstripout>=0.7.0
 
-# BLE power meter (JT-TC66C) data acquisition
+# TC66C power meter (BLE + USB serial)
 bleak>=0.22.0
 pycryptodome>=3.20.0
+pyserial>=3.5
 
 # Allow asyncio.run() inside Jupyter's event loop (power profiling notebook)
 nest_asyncio>=1.6.0

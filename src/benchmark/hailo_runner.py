@@ -39,6 +39,7 @@ def run_sequence_hailo(
     imgsz: int,
     out_csv: Path,
     clahe: bool = False,
+    max_duration_s: float | None = None,
 ) -> pd.DataFrame:
     """
     Per-frame Hailo-8L tracking loop for one MOT17 sequence.
@@ -82,65 +83,81 @@ def run_sequence_hailo(
         scale_x = orig_w / hef_imgsz
         scale_y = orig_h / hef_imgsz
 
-        for frame_idx, img_path in enumerate(frame_paths):
-            frame_id  = frame_idx + 1
-            frame_bgr = cv2.imread(str(img_path))
-            if clahe:
-                frame_bgr = preprocess_frame(frame_bgr)
+        t_loop_start = time.perf_counter()
+        frame_idx = 0
+        budget_expired = False
 
-            t0 = time.perf_counter()
-            raw = model.infer(frame_bgr)
-            t1 = time.perf_counter()
+        # Loop over the sequence continuously until max_duration_s expires.
+        # Single-pass when max_duration_s is None (standard benchmark mode).
+        while not budget_expired:
+            for img_path in frame_paths:
+                if max_duration_s is not None and (time.perf_counter() - t_loop_start) >= max_duration_s:
+                    budget_expired = True
+                    break
 
-            boxes_xyxy, confs, cls_ids = decode_detections(
-                raw,
-                imgsz=hef_imgsz,
-                conf_thres=CONF,
-                target_classes=CLASSES,
-            )
+                frame_id  = frame_idx + 1
+                frame_idx += 1
+                frame_bgr = cv2.imread(str(img_path))
+                if clahe:
+                    frame_bgr = preprocess_frame(frame_bgr)
 
-            # Feed detections into supervision ByteTrack (still in model space)
-            if boxes_xyxy:
-                dets = sv.Detections(
-                    xyxy=np.array(boxes_xyxy, dtype=np.float32),
-                    confidence=np.array(confs, dtype=np.float32),
-                    class_id=np.array(cls_ids, dtype=np.int32),
+                t0 = time.perf_counter()
+                raw = model.infer(frame_bgr)
+                t1 = time.perf_counter()
+
+                boxes_xyxy, confs, cls_ids = decode_detections(
+                    raw,
+                    imgsz=hef_imgsz,
+                    conf_thres=CONF,
+                    target_classes=CLASSES,
                 )
-            else:
-                dets = sv.Detections.empty()
 
-            tracked = tracker.update_with_detections(dets)
+                # Feed detections into supervision ByteTrack (still in model space)
+                if boxes_xyxy:
+                    dets = sv.Detections(
+                        xyxy=np.array(boxes_xyxy, dtype=np.float32),
+                        confidence=np.array(confs, dtype=np.float32),
+                        class_id=np.array(cls_ids, dtype=np.int32),
+                    )
+                else:
+                    dets = sv.Detections.empty()
 
-            track_ids   = tracked.tracker_id.tolist() if tracked.tracker_id is not None else []
-            track_confs = tracked.confidence.tolist()  if tracked.confidence is not None else []
+                tracked = tracker.update_with_detections(dets)
 
-            # Scale tracked boxes from model input space → original image pixels
-            if len(tracked) > 0:
-                scaled = tracked.xyxy.copy()
-                scaled[:, [0, 2]] *= scale_x
-                scaled[:, [1, 3]] *= scale_y
-                bboxes = scaled.tolist()
-            else:
-                bboxes = []
+                track_ids   = tracked.tracker_id.tolist() if tracked.tracker_id is not None else []
+                track_confs = tracked.confidence.tolist()  if tracked.confidence is not None else []
 
-            footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
+                # Scale tracked boxes from model input space → original image pixels
+                if len(tracked) > 0:
+                    scaled = tracked.xyxy.copy()
+                    scaled[:, [0, 2]] *= scale_x
+                    scaled[:, [1, 3]] *= scale_y
+                    bboxes = scaled.tolist()
+                else:
+                    bboxes = []
 
-            inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
-            mem_bytes    = process.memory_info().rss
+                footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
 
-            records.append({
-                "frame_id":     frame_id,
-                "inference_ms": inference_ms,
-                "n_detections": len(track_ids),
-                "track_ids":    json.dumps(track_ids),
-                "bboxes_xyxy":  json.dumps(bboxes),
-                "confs":        json.dumps(track_confs),
-                "footpoints":   json.dumps(footpoints),
-                "mem_bytes":    mem_bytes,
-                "imgsz":        hef_imgsz,
-                "model":        model_name,
-                "seq":          seq_name,
-            })
+                inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
+                mem_bytes    = process.memory_info().rss
+
+                records.append({
+                    "frame_id":     frame_id,
+                    "inference_ms": inference_ms,
+                    "n_detections": len(track_ids),
+                    "track_ids":    json.dumps(track_ids),
+                    "bboxes_xyxy":  json.dumps(bboxes),
+                    "confs":        json.dumps(track_confs),
+                    "footpoints":   json.dumps(footpoints),
+                    "mem_bytes":    mem_bytes,
+                    "imgsz":        hef_imgsz,
+                    "model":        model_name,
+                    "seq":          seq_name,
+                })
+
+            # Single-pass mode: no time budget → exit after one pass
+            if max_duration_s is None:
+                break
 
     df = pd.DataFrame(records)
     df.to_csv(out_csv, index=False)
