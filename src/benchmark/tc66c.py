@@ -64,7 +64,7 @@ _HEADERS = (b"pac1", b"pac2", b"pac3")
 
 
 # ── Measurement dataclass ───────────────────────────────────────────────────
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class TC66CReading:
     """Single measurement snapshot from the TC66C."""
 

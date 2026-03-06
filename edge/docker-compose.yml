@@ -37,5 +37,19 @@ services:
       - ../edge/calib_imgs:/workspace/calib_imgs:ro
       # edge/ — write export_results.csv back to host
       - ../edge:/workspace/edge
+      # TensorFlow/XLA GPU ops need libdevice.10.bc (ships with cuda-nvcc,
+      # absent from the DFC image).  Mount the host copy from triton.
+      - ../.venv/lib/python3.12/site-packages/triton/backends/nvidia/lib/libdevice.10.bc:/usr/local/cuda/nvvm/libdevice/libdevice.10.bc:ro
+    environment:
+      - XLA_FLAGS=--xla_gpu_cuda_data_dir=/usr/local/cuda
+      - NVIDIA_VISIBLE_DEVICES=all
+    # GPU access for DFC Adaround and higher optimization levels
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     # Default command from Dockerfile: export all variants at hailo8l
     # Override on the command line (see examples above)

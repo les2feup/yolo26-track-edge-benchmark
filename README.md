@@ -181,7 +181,7 @@ rsync -avP user@devmachine:path/to/models/*.hef models/
 
 ```bash
 source .venv/bin/activate
-DEVICE_PROFILE=$(pwd)/edge/profiles/rpi5_hailo.yaml jupyter lab --no-browser --port=8888
+DEVICE_PROFILE=$(pwd)/edge/profiles/rpi5_hailo.yaml jupyter lab --ip=0.0.0.0 --no-browser --port=8888
 ```
 
 ---
