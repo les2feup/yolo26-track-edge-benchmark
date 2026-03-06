@@ -125,11 +125,17 @@ def baked_imgsz(model_path: str) -> int:
     """Derive the compile-time resolution from a model filename.
 
     Works for any backend that bakes resolution into the filename:
-        yolo26n.engine → 640   (no suffix = canonical 640px)
-        yolo26n_576.hef → 576
-        yolo26s_512.engine → 512
+        yolo26n.engine      → 640   (no suffix = canonical 640px)
+        yolo26n_576.hef     → 576
+        yolo26s_512.engine  → 512
+        yolo26n_576_hq.hef  → 576   (quality tag stripped)
     """
     stem = model_path.rsplit(".", 1)[0]
+    # Strip known quality-tag suffixes before resolution parsing
+    for tag in ("_hq", "_lq"):
+        if stem.endswith(tag):
+            stem = stem[: -len(tag)]
+            break
     parts = stem.rsplit("_", 1)
     return int(parts[-1]) if len(parts) == 2 and parts[-1].isdigit() else 640
 
