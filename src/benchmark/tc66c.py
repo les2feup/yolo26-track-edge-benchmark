@@ -57,7 +57,8 @@ _CIPHER = AES.new(_AES_KEY, AES.MODE_ECB)
 # ── Protocol constants ──────────────────────────────────────────────────────
 BLOCK_SIZE = 64
 TOTAL_PAYLOAD = 3 * BLOCK_SIZE  # 192 bytes
-CMD_GETVA = b"bgetva\r\n"
+CMD_GETVA = b"bgetva\r\n"       # BLE transport
+CMD_GETVA_USB = b"getva\r\n"    # USB serial transport (no 'b' prefix)
 
 # ── Expected block headers after decryption ─────────────────────────────────
 _HEADERS = (b"pac1", b"pac2", b"pac3")
@@ -331,6 +332,89 @@ async def collect(
                 print(f"[tc66c] BLE dropped ({exc.__class__.__name__}), "
                       f"reconnecting in 3 s ... ({reconnects}/{MAX_RECONNECTS})")
                 await asyncio.sleep(3.0)
+    finally:
+        if csv_file is not None:
+            csv_file.close()
+
+    return readings
+
+
+# ── USB serial acquisition loop ───────────────────────────────────────────
+def collect_serial(
+    port: str = "/dev/ttyACM0",
+    duration_s: float = 60.0,
+    interval_s: float = 1.0,
+    csv_path: Path | None = None,
+    on_reading: Callable[[TC66CReading], None] | None = None,
+    stop_event=None,
+    baudrate: int = 115200,
+) -> list[TC66CReading]:
+    """Poll TC66C over USB serial (micro-USB port).
+
+    Same protocol as BLE but uses ``getva\\r\\n`` (no 'b' prefix) and
+    reads 192-byte AES-ECB responses synchronously via pyserial.
+
+    Parameters
+    ----------
+    port : str
+        Serial device path (e.g. ``/dev/ttyACM0``).
+    duration_s, interval_s, csv_path, on_reading, stop_event
+        Identical semantics to :func:`collect`.
+    baudrate : int
+        Serial baud rate (default 115200).
+    """
+    import serial as pyserial
+
+    readings: list[TC66CReading] = []
+
+    csv_file = None
+    writer = None
+    if csv_path is not None:
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        csv_file = open(csv_path, "a", newline="")
+        writer = csv.writer(csv_file)
+        if csv_path.stat().st_size == 0:
+            writer.writerow(TC66CReading.__dataclass_fields__.keys())
+
+    try:
+        ser = pyserial.Serial(port, baudrate=baudrate, timeout=3)
+        time.sleep(0.2)
+        t_start = time.monotonic()
+
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                break
+            if (time.monotonic() - t_start) >= duration_s:
+                break
+
+            ser.reset_input_buffer()
+            ser.write(CMD_GETVA_USB)
+            raw = ser.read(TOTAL_PAYLOAD)
+
+            if len(raw) != TOTAL_PAYLOAD:
+                time.sleep(interval_s)
+                continue
+
+            ts = time.time()
+            plain = decrypt_payload(raw)
+
+            if not verify_headers(plain):
+                time.sleep(interval_s)
+                continue
+
+            reading = parse_reading(plain, ts=ts)
+            readings.append(reading)
+
+            if writer is not None:
+                writer.writerow(reading.csv_row)
+                csv_file.flush()
+
+            if on_reading is not None:
+                on_reading(reading)
+
+            time.sleep(interval_s)
+
+        ser.close()
     finally:
         if csv_file is not None:
             csv_file.close()

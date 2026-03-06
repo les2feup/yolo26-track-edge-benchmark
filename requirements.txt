@@ -19,6 +19,7 @@ opencv-python>=4.5.0
 # Jupyter notebooks
 jupyterlab>=4.0.0
 ipykernel>=6.20.0
+ipywidgets>=8.0.0
 
 # CPU memory measurement
 psutil>=5.9.0
@@ -29,9 +30,10 @@ supervision>=0.23.0
 # git notebook output stripping
 nbstripout>=0.7.0
 
-# BLE power meter (JT-TC66C) data acquisition
+# TC66C power meter (BLE + USB serial)
 bleak>=0.22.0
 pycryptodome>=3.20.0
+pyserial>=3.5
 
 # Allow asyncio.run() inside Jupyter's event loop (power profiling notebook)
 nest_asyncio>=1.6.0

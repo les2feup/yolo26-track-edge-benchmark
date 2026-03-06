@@ -34,9 +34,14 @@ psutil>=5.9.0
 # YAML profile loader
 pyyaml>=6.0
 
+# TC66C USB serial power meter
+pyserial>=3.5
+pycryptodome>=3.9.0
+
 # Jupyter notebooks
 jupyterlab>=3.0,<4.0
 ipykernel>=6.0
+ipywidgets>=7.0,<9.0
 
 # git notebook output stripping
 nbstripout>=0.6.0
