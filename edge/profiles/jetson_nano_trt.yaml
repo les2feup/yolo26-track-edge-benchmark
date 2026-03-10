@@ -1,0 +1,46 @@
+# NVIDIA Jetson Nano — TensorRT HQ engines (graph-surgery pipeline)
+# Maxwell GPU (128 CUDA cores, sm_53), 4 GB LPDDR4 shared CPU/GPU memory
+# JetPack 4.6.x: CUDA 10.2, cuDNN 8.0, TensorRT 8.2, Python 3.8 (via apt)
+#
+# HQ engines are compiled from surgered ONNX graphs: the model is cut at the
+# 6 detection-head Conv outputs (cv2/cv3), removing DFL decode, dist2bbox, and
+# NMS from the engine. Post-processing (DFL softmax, anchor decode, NMS) runs
+# on CPU via trt_postprocess.py. Mod ops in the backbone/neck are decomposed
+# into TRT 8.2-compatible Sub/Mul/Floor/Div equivalents.
+#
+# This approach mirrors the Hailo HQ pipeline: the accelerator runs the clean
+# backbone+neck+head-conv subgraph; the host CPU handles decode and tracking.
+#
+# Export: edge/export_tensorrt_hq.py (must run on the Nano itself)
+# Inference: benchmark.trt_infer.TrtInfer (tensorrt + pycuda)
+# Runner: benchmark.trt_runner.run_sequence_trt
+
+device_id: jetson_nano_trt
+device_label: "Jetson Nano TRT HQ (Seeed reComputer J10, JetPack 4.6.x)"
+os: jetpack
+
+# torch_device is used only for the pt runner path — TRT HQ uses pycuda directly.
+# Set to cpu so device_profile.py doesn't attempt torch.cuda operations.
+torch_device: cpu
+backend: tensorrt_hq
+
+# HQ .engine files — resolution baked at compile time.
+# Each model×resolution pair is a separate engine file.
+model_variants:
+  # 640px variants
+  - yolo26n_hq.engine
+  - yolo26s_hq.engine
+  - yolo26m_hq.engine   
+  # 576px variants
+  - yolo26n_576_hq.engine
+  - yolo26s_576_hq.engine
+  - yolo26m_576_hq.engine
+
+model_format: engine
+
+# Engine resolution is fixed at compile time — each variant runs at one resolution.
+# resolutions list prevents redundant loop iterations in iter_model_imgsz().
+resolutions: [640, 576]
+
+warmup_frames: 30
+result_tag: jetson_nano_trt

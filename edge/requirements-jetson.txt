@@ -45,3 +45,15 @@ ipywidgets>=7.0,<9.0
 
 # git notebook output stripping
 nbstripout>=0.6.0
+
+# TensorRT HQ pipeline — ONNX graph surgery (export_tensorrt_hq.py)
+# onnx-graphsurgeon is pure Python, no native deps
+onnx>=1.12.0,<1.15.0
+onnx_graphsurgeon>=0.3.0
+
+# TensorRT HQ inference (trt_infer.py) — pycuda builds against system CUDA 10.2
+# tensorrt wheel must be installed separately: tensorrt-8.2.0.6-cp38-none-linux_aarch64.whl
+pycuda>=2022.1,<2024.1
+
+# TensorRT HQ tracking — supervision ByteTrack (no ultralytics dependency)
+supervision>=0.18.0,<0.22.0

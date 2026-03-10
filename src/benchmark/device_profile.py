@@ -39,9 +39,9 @@ class DeviceProfile:
     device_label: str
     os: str
     torch_device: str
-    backend: str              # cpu | cuda | tensorrt | hailo
+    backend: str              # cpu | cuda | tensorrt | tensorrt_hq | hailo | qnn
     model_variants: list[str]
-    model_format: str         # pt | engine | hef | tflite
+    model_format: str         # pt | engine | hef | onnx | tflite
     resolutions: list[int]
     warmup_frames: int
     result_tag: str
@@ -118,7 +118,7 @@ def _from_yaml(path: Path) -> DeviceProfile:
 
 # Backends with fixed input shapes baked in at compile time.
 # Model files encode the resolution in the filename suffix (no suffix = 640px).
-_BAKED_RESOLUTION_BACKENDS = {"hailo", "tensorrt"}
+_BAKED_RESOLUTION_BACKENDS = {"hailo", "tensorrt", "tensorrt_hq", "qnn"}
 
 
 def baked_imgsz(model_path: str) -> int:
@@ -185,6 +185,22 @@ def try_load_model(model_name: str, device: str) -> tuple:
             "from benchmark.hailo_runner instead of try_load_model()."
         )
 
+    # TRT HQ engines (surgered, 6 raw Conv outputs) use a dedicated runner
+    # with custom post-processing — not loadable via ultralytics.
+    if resolved.suffix == ".engine" and "_hq" in resolved.stem:
+        return None, (
+            f"{model_name} is a TRT HQ engine — use run_sequence_trt() "
+            "from benchmark.trt_runner instead of try_load_model()."
+        )
+
+    # QNN ONNX models (surgered, 6 raw Conv outputs) use ONNX Runtime with
+    # QNNExecutionProvider — not loadable via ultralytics.
+    if resolved.suffix == ".onnx" and "_qnn" in resolved.stem:
+        return None, (
+            f"{model_name} is a QNN ONNX model — use run_sequence_qnn() "
+            "from benchmark.qnn_runner instead of try_load_model()."
+        )
+
     try:
         from ultralytics import YOLO
         model = YOLO(str(resolved))
@@ -213,7 +229,7 @@ def apply_device_workarounds(profile: DeviceProfile) -> None:
 
     Must be called before any ultralytics/torch import.  No-op for non-Jetson profiles.
     """
-    if profile.device_id == "jetson_nano":
+    if profile.device_id in ("jetson_nano", "jetson_nano_trt"):
         _libgomp = "/usr/lib/aarch64-linux-gnu/libgomp.so.1"
         existing = os.environ.get("LD_PRELOAD", "")
         if _libgomp not in existing:
