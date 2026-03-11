@@ -249,6 +249,9 @@ Then open notebook 01 or run the benchmark loop programmatically.
 ```bash
 DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano.yaml jupyter lab \
   --ip=0.0.0.0 --no-browser --port=8888
+
+DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano_trt.yaml jupyter lab \
+  --ip=0.0.0.0 --no-browser --port=8888
 ```
 
 Connect from the host browser using the URL printed in the terminal.
