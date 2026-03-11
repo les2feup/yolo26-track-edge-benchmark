@@ -13,8 +13,8 @@ model_variants:
   - yolo26n.pt
   - yolo26s.pt   
   - yolo26m.pt   
-  - yolo26l.pt
-  - yolo26x.pt
+  # - yolo26l.pt
+  # - yolo26x.pt
 
 model_format: pt
 
