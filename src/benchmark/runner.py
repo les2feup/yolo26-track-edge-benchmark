@@ -40,6 +40,8 @@ def run_sequence(
     tracker: str | None = None,
     clahe: bool = False,
     max_duration_s: float | None = None,
+    mem_total_bytes: int | None = None,
+    mem_delta_bytes: int | None = None,
 ) -> pd.DataFrame:
     """Per-frame YOLO tracking loop for one MOT17 sequence.
 
@@ -51,21 +53,25 @@ def run_sequence(
     The first WARMUP_FRAMES are run but their timing is discarded, matching
     the warm-up protocol described in the methodology.
 
-    Memory is sampled once per frame:
-    - GPU runs: torch.cuda.max_memory_allocated() (bytes, peak since last reset)
-    - CPU runs: psutil RSS of the current process (bytes)
+    Memory columns written to the CSV:
+    - mem_total_bytes: absolute process RSS at model-loaded steady state (platform view).
+    - mem_delta_bytes: isolated model footprint = total − baseline before any framework imports.
+    - mem_bytes:       alias for mem_total_bytes, kept for backward compatibility with
+                       downstream aggregation cells that read df["mem_bytes"].max().
 
-    The output CSV is written atomically via a temporary file to prevent
-    partial writes on interruption.
+    Both values are constants supplied by the multiprocessing worker (worker.py) which
+    measures them in isolation before and after framework/model load. Passing None falls
+    back to a live RSS snapshot, which is less accurate but maintains single-process compat.
 
     Args:
-        model:   Ultralytics YOLO instance, already loaded and on target device.
-        seq_dir: Path to one MOT17 sequence directory (contains img1/, gt/, seqinfo.ini).
-        imgsz:   Inference resolution passed to model.track().
-        out_csv: Destination path for the per-frame CSV output.
-        tracker: Path to a custom tracker YAML.  Defaults to TRACKER from config (bytetrack).
-        clahe:   Apply CLAHE luminance normalisation before inference (clip=2.0, grid=8×8).
-                 Must be applied uniformly across ALL sequences and resolutions if enabled.
+        model:           Ultralytics YOLO instance, already loaded and on target device.
+        seq_dir:         Path to one MOT17 sequence directory (img1/, gt/, seqinfo.ini).
+        imgsz:           Inference resolution passed to model.track().
+        out_csv:         Destination path for the per-frame CSV output.
+        tracker:         Path to a custom tracker YAML. Defaults to TRACKER from config.
+        clahe:           Apply CLAHE luminance normalisation before inference.
+        mem_total_bytes: Absolute peak process RSS supplied by the worker.
+        mem_delta_bytes: Isolated model footprint (total − pre-import baseline).
 
     Returns:
         DataFrame with one row per frame, same schema as the output CSV.
@@ -88,8 +94,9 @@ def run_sequence(
         torch.cuda.reset_peak_memory_stats()
 
     # Explicit device for model.track() — ensures the predictor's AutoBackend
-    # runs on the correct device.  Without this, some ultralytics versions
-    # (especially on older torch/Python) fall back to CPU silently.
+    # runs on the correct device.  Passing device=None explicitly (rather than
+    # omitting the kwarg) triggers silent inference corruption on Qualcomm
+    # torch 2.0.0.post4, so we only set device_arg when we have a real value.
     if hasattr(model, "device") and str(model.device) != "cpu":
         device_arg = model.device
     elif use_cuda:
@@ -99,6 +106,12 @@ def run_sequence(
 
     process = psutil.Process()
     records = []
+
+    # Fallback: if the worker didn't supply pre-measured values, snapshot live RSS.
+    if mem_total_bytes is None:
+        mem_total_bytes = process.memory_info().rss
+    if mem_delta_bytes is None:
+        mem_delta_bytes = 0
 
     t_loop_start = time.perf_counter()
     frame_idx = 0
@@ -119,23 +132,18 @@ def run_sequence(
                 frame_bgr = preprocess_frame(frame_bgr)
 
             t0      = time.perf_counter()
-            results = model.track(
-                frame_bgr,
+            track_kwargs = dict(
                 persist=True,
                 tracker=tracker_path,
                 conf=CONF,
                 classes=CLASSES,
                 imgsz=imgsz,
-                device=device_arg,
                 verbose=False,
             )
+            if device_arg is not None:
+                track_kwargs["device"] = device_arg
+            results = model.track(frame_bgr, **track_kwargs)
             t1 = time.perf_counter()
-
-            # Memory snapshot: GPU peak (cumulative since reset) or CPU RSS
-            if use_cuda:
-                mem_bytes = torch.cuda.max_memory_allocated()
-            else:
-                mem_bytes = process.memory_info().rss
 
             boxes = results[0].boxes
             if boxes is not None and boxes.id is not None:
@@ -151,17 +159,19 @@ def run_sequence(
             inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
 
             records.append({
-                "frame_id":     frame_id,
-                "inference_ms": inference_ms,
-                "n_detections": len(track_ids),
-                "track_ids":    json.dumps(track_ids),
-                "bboxes_xyxy":  json.dumps(bboxes),
-                "confs":        json.dumps(confs),
-                "footpoints":   json.dumps(footpoints),
-                "mem_bytes":    mem_bytes,
-                "imgsz":        imgsz,
-                "model":        model_name,
-                "seq":          seq_name,
+                "frame_id":        frame_id,
+                "inference_ms":    inference_ms,
+                "n_detections":    len(track_ids),
+                "track_ids":       json.dumps(track_ids),
+                "bboxes_xyxy":     json.dumps(bboxes),
+                "confs":           json.dumps(confs),
+                "footpoints":      json.dumps(footpoints),
+                "mem_total_bytes": mem_total_bytes,
+                "mem_delta_bytes": mem_delta_bytes,
+                "mem_bytes":       mem_total_bytes,   # backward-compat alias
+                "imgsz":           imgsz,
+                "model":           model_name,
+                "seq":             seq_name,
             })
 
         # Single-pass mode: no time budget → exit after one pass

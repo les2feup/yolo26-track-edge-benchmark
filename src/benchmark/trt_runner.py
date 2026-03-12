@@ -15,10 +15,13 @@ import json
 import time
 from pathlib import Path
 
+import os
+
 import cv2
 import numpy as np
 import pandas as pd
 import psutil
+import pycuda.driver as _cuda_drv
 
 from benchmark.config import CONF, CLASSES, WARMUP_FRAMES
 from benchmark.trt_infer import TrtInfer
@@ -40,23 +43,29 @@ def run_sequence_trt(
     out_csv: Path,
     clahe: bool = False,
     max_duration_s: float | None = None,
+    baseline_ram: int | None = None,
 ) -> pd.DataFrame:
     """
     Per-frame TensorRT HQ tracking loop for one MOT17 sequence.
 
     Timing protocol matches runner.run_sequence():
     - First WARMUP_FRAMES are run but their inference_ms is recorded as NaN.
-    - GPU memory is not tracked via torch (not used); CPU RSS is reported.
+    - mem_total_bytes is measured after engine load (platform RSS view).
+    - mem_delta_bytes = mem_total_bytes − baseline_ram (model-only footprint).
+
+    baseline_ram should be the process RSS before any framework imports, supplied
+    by worker.py. If omitted, the current RSS is used as baseline (less accurate).
 
     The output CSV schema is identical to runner.run_sequence() so that
     compute_mot_metrics() and all notebook aggregation cells work unchanged.
 
     Args:
-        engine_path: Path to the HQ .engine file (6 raw Conv outputs).
-        seq_dir:     MOT17 sequence directory (contains img1/, gt/, seqinfo.ini).
-        imgsz:       Inference resolution (must match engine's compiled input shape).
-        out_csv:     Destination path for per-frame CSV.
-        clahe:       Apply CLAHE luminance normalisation before inference.
+        engine_path:  Path to the HQ .engine file (6 raw Conv outputs).
+        seq_dir:      MOT17 sequence directory (contains img1/, gt/, seqinfo.ini).
+        imgsz:        Inference resolution (must match engine's compiled input shape).
+        out_csv:      Destination path for per-frame CSV.
+        clahe:        Apply CLAHE luminance normalisation before inference.
+        baseline_ram: Process RSS (bytes) before framework imports, from worker.py.
 
     Returns:
         DataFrame with one row per frame.
@@ -67,11 +76,18 @@ def run_sequence_trt(
     seq_name    = seq_dir.name.rsplit("-", 1)[0]   # "MOT17-09-SDP" → "MOT17-09"
     model_name  = Path(engine_path).name
 
-    process = psutil.Process()
     tracker = sv.ByteTrack()
     records = []
 
+    process = psutil.Process(os.getpid())
+    if baseline_ram is None:
+        baseline_ram = process.memory_info().rss
+
     with TrtInfer(engine_path) as model:
+        # Platform RSS after engine load: captures driver + weights + I/O buffers.
+        mem_total_bytes = process.memory_info().rss
+        mem_delta_bytes = max(mem_total_bytes - baseline_ram, 0)
+
         # Engine input resolution is baked at compile time
         engine_imgsz = model.input_w   # assumed square
 
@@ -80,6 +96,7 @@ def run_sequence_trt(
         orig_h, orig_w = _probe.shape[:2]
         scale_x = orig_w / engine_imgsz
         scale_y = orig_h / engine_imgsz
+        del _probe
 
         t_loop_start = time.perf_counter()
         frame_idx = 0
@@ -137,20 +154,21 @@ def run_sequence_trt(
                 footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
 
                 inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
-                mem_bytes    = process.memory_info().rss
 
                 records.append({
-                    "frame_id":     frame_id,
-                    "inference_ms": inference_ms,
-                    "n_detections": len(track_ids),
-                    "track_ids":    json.dumps(track_ids),
-                    "bboxes_xyxy":  json.dumps(bboxes),
-                    "confs":        json.dumps(track_confs),
-                    "footpoints":   json.dumps(footpoints),
-                    "mem_bytes":    mem_bytes,
-                    "imgsz":        engine_imgsz,
-                    "model":        model_name,
-                    "seq":          seq_name,
+                    "frame_id":        frame_id,
+                    "inference_ms":    inference_ms,
+                    "n_detections":    len(track_ids),
+                    "track_ids":       json.dumps(track_ids),
+                    "bboxes_xyxy":     json.dumps(bboxes),
+                    "confs":           json.dumps(track_confs),
+                    "footpoints":      json.dumps(footpoints),
+                    "mem_total_bytes": mem_total_bytes,
+                    "mem_delta_bytes": mem_delta_bytes,
+                    "mem_bytes":       mem_total_bytes,   # backward-compat alias
+                    "imgsz":           engine_imgsz,
+                    "model":           model_name,
+                    "seq":             seq_name,
                 })
 
             # Single-pass mode

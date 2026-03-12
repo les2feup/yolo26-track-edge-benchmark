@@ -46,7 +46,8 @@ def run_sequence_hailo(
 
     Timing protocol matches runner.run_sequence():
     - First WARMUP_FRAMES are run but their inference_ms is recorded as NaN.
-    - GPU memory measurement is not applicable; CPU RSS is used instead.
+    - Host RSS delta around HailoInfer construction is used as memory footprint
+      (NPU SRAM usage is opaque; this captures driver + I/O buffer allocations).
 
     The output CSV schema is identical to runner.run_sequence() so that
     compute_mot_metrics() and all notebook aggregation cells work unchanged.
@@ -67,11 +68,13 @@ def run_sequence_hailo(
     seq_name    = seq_dir.name.rsplit("-", 1)[0]   # "MOT17-09-SDP" → "MOT17-09"
     model_name  = Path(hef_path).name
 
-    process = psutil.Process()
     tracker = sv.ByteTrack()
     records = []
 
+    _rss_before = psutil.Process().memory_info().rss
     with HailoInfer(hef_path) as model:
+        mem_total_bytes = psutil.Process().memory_info().rss
+        mem_delta_bytes = max(mem_total_bytes - _rss_before, 0)
         # HEF input resolution is fixed at compile time — always use this for
         # coordinate decoding and scaling, regardless of the requested imgsz.
         hef_h, hef_w, _ = model.input_shape
@@ -139,20 +142,21 @@ def run_sequence_hailo(
                 footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
 
                 inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
-                mem_bytes    = process.memory_info().rss
 
                 records.append({
-                    "frame_id":     frame_id,
-                    "inference_ms": inference_ms,
-                    "n_detections": len(track_ids),
-                    "track_ids":    json.dumps(track_ids),
-                    "bboxes_xyxy":  json.dumps(bboxes),
-                    "confs":        json.dumps(track_confs),
-                    "footpoints":   json.dumps(footpoints),
-                    "mem_bytes":    mem_bytes,
-                    "imgsz":        hef_imgsz,
-                    "model":        model_name,
-                    "seq":          seq_name,
+                    "frame_id":        frame_id,
+                    "inference_ms":    inference_ms,
+                    "n_detections":    len(track_ids),
+                    "track_ids":       json.dumps(track_ids),
+                    "bboxes_xyxy":     json.dumps(bboxes),
+                    "confs":           json.dumps(track_confs),
+                    "footpoints":      json.dumps(footpoints),
+                    "mem_total_bytes": mem_total_bytes,
+                    "mem_delta_bytes": mem_delta_bytes,
+                    "mem_bytes":       mem_total_bytes,   # backward-compat alias
+                    "imgsz":           hef_imgsz,
+                    "model":           model_name,
+                    "seq":             seq_name,
                 })
 
             # Single-pass mode: no time budget → exit after one pass
