@@ -131,11 +131,15 @@ def run_sequence(
 
             # Skip warm-up frames for timing records but still run inference
             # to allow ByteTrack to build its internal track state.
-            inference_ms = (t1 - t0) * 1000 if frame_idx > WARMUP_FRAMES else float("nan")
+            # model.track() subsumes inference + ByteTrack in one call, so
+            # postprocess_ms is 0 — the column exists for cross-backend consistency.
+            inference_ms   = (t1 - t0) * 1000 if frame_idx > WARMUP_FRAMES else float("nan")
+            postprocess_ms = 0.0               if frame_idx > WARMUP_FRAMES else float("nan")
 
             records.append({
                 "frame_id":        frame_id,
                 "inference_ms":    inference_ms,
+                "postprocess_ms":  postprocess_ms,
                 "n_detections":    len(track_ids),
                 "track_ids":       json.dumps(track_ids),
                 "bboxes_xyxy":     json.dumps(bboxes),

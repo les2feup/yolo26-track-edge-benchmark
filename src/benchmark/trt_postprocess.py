@@ -17,18 +17,24 @@ Decoding steps (all on CPU / numpy):
   2. Build anchor grids per scale.
   3. Convert ltrb (stride units) → xyxy pixel coordinates via anchor centres.
   4. Sigmoid on class logits → max-class confidence. Filter by conf_thres.
-  5. Per-class greedy NMS.
+     Fast path: when target_classes=[0], only channel 0 is sigmoid'd (no argmax).
+  5. Per-class greedy NMS (single pass for person-only).
 """
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import numpy as np
 
 
+@lru_cache(maxsize=8)
 def _make_anchor_grid(h: int, w: int, stride: int) -> np.ndarray:
     """Anchor point grid for one feature-map scale.
 
     Returns (H*W, 2) of (cx, cy) pixel-space centres at stride resolution.
+    Cached — shapes and strides are fixed per model, so this builds once per
+    (h, w, stride) triple across the full benchmark run.
     """
     ys, xs = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
     anchors = np.stack([xs, ys], axis=-1).reshape(-1, 2).astype(np.float32)
@@ -39,14 +45,18 @@ def _decode_scale(
     box_nchw: np.ndarray,   # (1, 4, H, W) — ltrb in stride units
     cls_nchw: np.ndarray,   # (1, C, H, W) — raw class logits
     stride: int,
+    person_only: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Decode one scale from raw TRT Conv outputs into xyxy boxes + scores."""
+    """Decode one scale from raw TRT Conv outputs into xyxy boxes + scores.
+
+    When person_only is True, only channel 0 is sigmoid'd and no argmax is
+    needed — skips ~98% of the classification work for single-class use.
+    """
     _, _, H, W = box_nchw.shape
     N = H * W
 
     # Transpose NCHW → (N, C)
     ltrb     = box_nchw[0].reshape(4, N).T              # (N, 4)
-    cls_flat = cls_nchw[0].reshape(-1, N).T              # (N, num_classes)
 
     # Anchor grid → pixel coordinates
     anchors = _make_anchor_grid(H, W, stride)            # (N, 2)
@@ -58,11 +68,17 @@ def _decode_scale(
     y2 = anchors[:, 1] + ltrb[:, 3] * stride
     boxes = np.stack([x1, y1, x2, y2], axis=1)          # (N, 4)
 
-    # Sigmoid on class logits → probabilities
-    logits    = cls_flat.clip(-88.0, 88.0)
-    cls_probs = 1.0 / (1.0 + np.exp(-logits))           # (N, C)
-    class_ids = cls_probs.argmax(axis=1).astype(np.int32)
-    scores    = cls_probs[np.arange(N), class_ids]
+    if person_only:
+        # Sigmoid only the person channel (index 0) — no argmax needed.
+        logit0 = cls_nchw[0, 0].reshape(N).clip(-88.0, 88.0)
+        scores    = 1.0 / (1.0 + np.exp(-logit0))       # (N,)
+        class_ids = np.zeros(N, dtype=np.int32)
+    else:
+        cls_flat  = cls_nchw[0].reshape(-1, N).T        # (N, num_classes)
+        logits    = cls_flat.clip(-88.0, 88.0)
+        cls_probs = 1.0 / (1.0 + np.exp(-logits))       # (N, C)
+        class_ids = cls_probs.argmax(axis=1).astype(np.int32)
+        scores    = cls_probs[np.arange(N), class_ids]
 
     return boxes, scores, class_ids
 
@@ -100,7 +116,7 @@ def decode_detections(
     conf_thres: float = 0.25,
     iou_thres: float = 0.45,
     target_classes: list[int] | None = None,
-) -> tuple[list[list[float]], list[float], list[int]]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Decode YOLO26 TRT HQ engine raw outputs into filtered, NMS-suppressed detections.
 
@@ -116,7 +132,9 @@ def decode_detections(
         target_classes: If set, retain only these class IDs (e.g. [0] for person).
 
     Returns:
-        boxes_xyxy, confs, class_ids — filtered and NMS-suppressed detections.
+        boxes_xyxy : float32 ndarray (N, 4) — xyxy pixel coordinates
+        confs      : float32 ndarray (N,)   — confidence scores
+        class_ids  : int32   ndarray (N,)   — class IDs
     """
     # Partition tensors: C=4 → box regression, C>4 → classification
     box_tensors = {}
@@ -151,10 +169,11 @@ def decode_detections(
     # Infer strides from spatial dimensions relative to input resolution
     strides = [imgsz // arr.shape[2] for arr in box_sorted]
 
+    person_only = target_classes == [0]
     all_boxes, all_scores, all_cls = [], [], []
 
     for box_nchw, cls_nchw, stride in zip(box_sorted, cls_sorted, strides):
-        boxes, scores, cls_ids = _decode_scale(box_nchw, cls_nchw, stride)
+        boxes, scores, cls_ids = _decode_scale(box_nchw, cls_nchw, stride, person_only)
         all_boxes.append(boxes)
         all_scores.append(scores)
         all_cls.append(cls_ids)
@@ -170,8 +189,9 @@ def decode_detections(
 
     boxes, scores, cls = boxes[mask], scores[mask], cls[mask]
 
+    _empty = np.empty((0, 4), dtype=np.float32)
     if len(boxes) == 0:
-        return [], [], []
+        return _empty, np.empty(0, dtype=np.float32), np.empty(0, dtype=np.int32)
 
     # Per-class greedy NMS
     keep_idx = []
@@ -188,4 +208,4 @@ def decode_detections(
     boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, imgsz)
     boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, imgsz)
 
-    return boxes.tolist(), scores.tolist(), cls.tolist()
+    return boxes, scores, cls

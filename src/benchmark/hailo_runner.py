@@ -113,16 +113,17 @@ def run_sequence_hailo(
                 )
 
                 # Feed detections into supervision ByteTrack (still in model space)
-                if boxes_xyxy:
+                if len(boxes_xyxy):
                     dets = sv.Detections(
-                        xyxy=np.array(boxes_xyxy, dtype=np.float32),
-                        confidence=np.array(confs, dtype=np.float32),
-                        class_id=np.array(cls_ids, dtype=np.int32),
+                        xyxy=boxes_xyxy,
+                        confidence=confs,
+                        class_id=cls_ids,
                     )
                 else:
                     dets = sv.Detections.empty()
 
                 tracked = tracker.update_with_detections(dets)
+                t2 = time.perf_counter()
 
                 track_ids   = tracked.tracker_id.tolist() if tracked.tracker_id is not None else []
                 track_confs = tracked.confidence.tolist()  if tracked.confidence is not None else []
@@ -138,11 +139,13 @@ def run_sequence_hailo(
 
                 footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
 
-                inference_ms = (t1 - t0) * 1000 if frame_idx > WARMUP_FRAMES else float("nan")
+                inference_ms   = (t1 - t0) * 1000 if frame_idx > WARMUP_FRAMES else float("nan")
+                postprocess_ms = (t2 - t1) * 1000 if frame_idx > WARMUP_FRAMES else float("nan")
 
                 records.append({
                     "frame_id":        frame_id,
                     "inference_ms":    inference_ms,
+                    "postprocess_ms":  postprocess_ms,
                     "n_detections":    len(track_ids),
                     "track_ids":       json.dumps(track_ids),
                     "bboxes_xyxy":     json.dumps(bboxes),
