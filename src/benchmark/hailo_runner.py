@@ -40,6 +40,7 @@ def run_sequence_hailo(
     out_csv: Path,
     clahe: bool = False,
     max_duration_s: float | None = None,
+    baseline_ram: int | None = None,
 ) -> pd.DataFrame:
     """
     Per-frame Hailo-8L tracking loop for one MOT17 sequence.
@@ -71,9 +72,10 @@ def run_sequence_hailo(
     tracker = sv.ByteTrack()
     records = []
 
-    _rss_before = psutil.Process().memory_info().rss
+    _process = psutil.Process()
+    _rss_before = baseline_ram if baseline_ram is not None else _process.memory_info().rss
     with HailoInfer(hef_path) as model:
-        mem_total_bytes = psutil.Process().memory_info().rss
+        mem_total_bytes = _process.memory_info().rss
         mem_delta_bytes = max(mem_total_bytes - _rss_before, 0)
         # HEF input resolution is fixed at compile time — always use this for
         # coordinate decoding and scaling, regardless of the requested imgsz.

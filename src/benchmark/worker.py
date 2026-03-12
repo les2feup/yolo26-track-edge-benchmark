@@ -45,10 +45,10 @@ def run_evaluation_isolated(
             from benchmark.hailo_runner import run_sequence_hailo
 
             resolved = resolve_model_path(model_path)
-            # Hailo runner measures its own RSS delta internally around HailoInfer init.
-            # baseline_ram is not forwarded because the Hailo driver load is part of the
-            # model cost (it only starts when HailoInfer opens the device).
-            run_sequence_hailo(resolved, seq_dir, imgsz=imgsz, out_csv=out_csv)
+            run_sequence_hailo(
+                resolved, seq_dir, imgsz=imgsz, out_csv=out_csv,
+                baseline_ram=baseline_ram,
+            )
 
         elif backend == "tensorrt_hq":
             from benchmark.trt_runner import run_sequence_trt
