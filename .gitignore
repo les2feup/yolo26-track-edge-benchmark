@@ -19,7 +19,7 @@ models/*_ncnn_model/
 notebooks/*.pt
 
 # Hailo proprietary wheels — not redistributable; place manually
-edge/hailo-wheels/*.whl
+edge/hailo/hailo-wheels/*.whl
 
 # Dataset archives and raw sequences — too large for git
 data/*.zip
