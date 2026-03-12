@@ -1,10 +1,6 @@
 # Arduino Uno Q — Qualcomm QRB2210 (Debian Linux side)
 # Cortex-A53 quad-core @ 2.0 GHz, Adreno 702 GPU, 2–4 GB LPDDR4
-# CPU inference via PyTorch or ONNX Runtime; no CUDA, no TensorRT
-# QNN SDK path exists but requires separate model conversion (not yet supported here)
-#
-# All model variants are attempted — runner will report OOM/failure and skip gracefully.
-# Expected outcome: nano and small may load; medium and above likely OOM on 2 GB SKU.
+# NCNN inference via ARM NEON; models exported with baked resolution (640, 576)
 
 device_id: arduino_uno_q
 device_label: "Arduino Uno Q (QRB2210)"

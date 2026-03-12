@@ -63,7 +63,10 @@ def run_evaluation_isolated(
             # Dynamic backends (cpu, cuda, tensorrt via ultralytics) and other
             # baked-resolution backends all use the standard runner.
             import logging
-            logging.getLogger("ultralytics").setLevel(logging.WARNING)
+            _ul_logger = logging.getLogger("ultralytics")
+            _ul_logger.setLevel(logging.WARNING)
+            for _h in _ul_logger.handlers:
+                _h.setLevel(logging.WARNING)
 
             from benchmark.runner import run_sequence
 

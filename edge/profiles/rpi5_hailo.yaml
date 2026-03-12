@@ -20,15 +20,10 @@ model_variants:
   # Default (hailo8l @ 640px)
   - yolo26n_hq.hef
   - yolo26s_hq.hef
-  - yolo26m_hq.hef      
-  # - yolo26l_hq.hef      
-  # - yolo26x_hq.hef      
-  # 576px variants
+  - yolo26m_hq.hef
   - yolo26n_576_hq.hef
   - yolo26s_576_hq.hef
   - yolo26m_576_hq.hef
-  # - yolo26l_576_hq.hef
-  # - yolo26x_576_hq.hef
 
 model_format: hef
 
