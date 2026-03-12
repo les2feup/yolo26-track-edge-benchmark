@@ -9,3 +9,41 @@ yolo26s.pt,576,ok,/workspace/models/yolo26s_576.hef,
 yolo26m.pt,576,ok,/workspace/models/yolo26m_576.hef,
 yolo26l.pt,576,ok,/workspace/models/yolo26l_576.hef,expected to exceed Hailo-8L SRAM — attempting anyway
 yolo26x.pt,576,ok,/workspace/models/yolo26x_576.hef,expected to exceed Hailo-8L SRAM — attempting anyway
+yolo26n.pt,640,hq,failed,,hailo_sdk_client import failed: No module named 'hailo_sdk_client'
+yolo26n.pt,640,hq,failed,,"optimize failed: in user code:
+
+    File ""/usr/local/lib/python3.11/dist-packages/hailo_model_optimization/algorithms/block_by_block/block_by_block.py"", line 217, in call_block  *
+        result = block_model(inputs)
+    File ""/usr/local/lib/python3.11/dist-packages/keras/src/utils/traceback_utils.py"", line 122, in error_handler  **
+        raise e.with_traceback(filtered_tb) from None
+    File ""/usr/local/lib/python3.11/dist-packages/keras/src/layers/layer.py"", line 1717, in update_shapes_dict_for_target_fn
+        raise ValueError(
+
+    ValueError: For a `build()` method with more than one argument, all arguments should have a `_shape` suffix and match an argument from `call()`. E.g. `build(self, foo_shape, bar_shape)`  For layer 'HailoModel', Received `build()` argument `self`, which does not end in `_shape`.
+"
+yolo26n.pt,640,hq,failed,,"optimize failed: in user code:
+
+    File ""/usr/local/lib/python3.11/dist-packages/hailo_model_optimization/algorithms/block_by_block/block_by_block.py"", line 217, in call_block  *
+        result = block_model(inputs)
+    File ""/usr/local/lib/python3.11/dist-packages/keras/src/utils/traceback_utils.py"", line 122, in error_handler  **
+        raise e.with_traceback(filtered_tb) from None
+    File ""/usr/local/lib/python3.11/dist-packages/keras/src/layers/layer.py"", line 1717, in update_shapes_dict_for_target_fn
+        raise ValueError(
+
+    ValueError: For a `build()` method with more than one argument, all arguments should have a `_shape` suffix and match an argument from `call()`. E.g. `build(self, foo_shape, bar_shape)`  For layer 'HailoModel', Received `build()` argument `self`, which does not end in `_shape`.
+"
+yolo26n.pt,640,hq,failed,,optimize failed: {{function_node __wrapped__Log_device_/job:localhost/replica:0/task:0/device:GPU:0}} JIT compilation failed. [Op:Log] name: 
+yolo26n.pt,640,hq,failed,,"optimize failed: 1 validation error for ModelOptimizationConfig
+calibration -> data_count
+  extra fields not permitted; data_count from line 8; command was model_optimization_config(calibration,batch_size=8,data_count=0) (type=value_error.extra)"
+yolo26n.pt,640,hq,failed,,compile failed: ClientRunner.compile() got an unexpected keyword argument 'allocator_params'
+yolo26n.pt,640,hq,ok,/workspace/models/yolo26n_hq.hef,
+yolo26m.pt,640,hq,failed,,optimize failed: 'StatsManager' object has no attribute '_stats'
+yolo26m.pt,640,hq,ok,/workspace/models/yolo26m_hq.hef,
+yolo26m.pt,640,hq,ok,/workspace/models/yolo26m_hq.hef,
+yolo26s.pt,640,hq,ok,/workspace/models/yolo26s_hq.hef,
+yolo26s.pt,640,hq,ok,/workspace/models/yolo26s_hq.hef,
+yolo26n.pt,576,hq,ok,/workspace/models/yolo26n_576_hq.hef,
+yolo26s.pt,576,hq,ok,/workspace/models/yolo26s_576_hq.hef,
+yolo26m.pt,576,hq,ok,/workspace/models/yolo26m_576_hq.hef,
+yolo26n.pt,640,hq,ok,/workspace/models/yolo26n_hq.hef,

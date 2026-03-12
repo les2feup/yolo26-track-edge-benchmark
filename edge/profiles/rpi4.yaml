@@ -1,24 +1,26 @@
-# Raspberry Pi 4 — CPU-only
+# Raspberry Pi 4 — NCNN (ARM Cortex-A72, NEON optimised)
 # Cortex-A72 quad-core @ 1.8 GHz, 4 GB LPDDR4
-# Conservative model and resolution set due to 4 GB RAM ceiling
+# Resolution is baked into each _ncnn_model folder at export time.
+# Each entry encodes exactly one resolution — no resolutions grid needed.
 
 device_id: rpi4
-device_label: "Raspberry Pi 4 Model B"
+device_label: "Raspberry Pi 4 Model B (NCNN)"
 os: raspbian
 
 torch_device: cpu
-backend: cpu
+backend: ncnn
 
 model_variants:
-  - yolo26n.pt
-  - yolo26s.pt   
-  - yolo26m.pt   
-  # - yolo26l.pt
-  # - yolo26x.pt
+  - yolo26n_640_ncnn_model
+  - yolo26n_576_ncnn_model
+  - yolo26s_640_ncnn_model
+  - yolo26s_576_ncnn_model
+  - yolo26m_640_ncnn_model
+  - yolo26m_576_ncnn_model
 
-model_format: pt
+model_format: ncnn_model
 
-resolutions: [640, 576]
+resolutions: [640, 576]   # informational — iter_model_imgsz() derives imgsz from folder name
 
 warmup_frames: 30
 result_tag: rpi4

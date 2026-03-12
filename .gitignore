@@ -14,6 +14,8 @@ __pycache__/
 models/*.pt
 models/*.onnx
 models/*.har
+models/*.engine
+models/*_ncnn_model/
 notebooks/*.pt
 
 # Hailo proprietary wheels — not redistributable; place manually
@@ -45,6 +47,11 @@ results/**/*.mp4
 .DS_Store
 debug/
 archive/
+
+# Project specific
+edge/export_results.csv
+edge/*.log.txt
+results/raw/desktop/*.csv
 
 # Ignore docs
 docs/

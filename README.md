@@ -94,6 +94,7 @@ changes, no IP configuration.
 **Step 1 — On the device**, start JupyterLab from the project root:
 
 ```bash
+ssh-copy-id <user>@<device-ip>  # Do this once to set up passwordless SSH
 cd ~/yolo26-track-edge-benchmark
 DEVICE_PROFILE=$(pwd)/edge/profiles/<profile>.yaml \
   jupyter lab --no-browser --port=8888
@@ -227,8 +228,6 @@ The RPi 4 uses Cortex-A72 (ARMv8.0-A), which lacks the ARMv8.2-A instructions
 in modern PyPI wheels. The setup guide uses Miniforge (Conda) with pinned
 PyTorch and NumPy versions compiled for broader ARM compatibility.
 
-yolo26m and above are expected to fail on the 4 GB RAM ceiling — the runner
-reports the error and continues.
 
 ```bash
 DEVICE_PROFILE=$(pwd)/edge/profiles/rpi4.yaml jupyter lab --no-browser --port=8888
@@ -273,6 +272,7 @@ DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano.yaml jupyter lab \
 
 ```bash
 sudo apt update
+sudo apt full-upgrade -y
 sudo apt install -y python3 python3-venv python3-dev git
 
 git clone <repo-url> && cd yolo26-track-edge-benchmark
@@ -281,7 +281,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 pip install -e .
 
-# Copy model weights from development machine
+# [OPTIONAL] Copy model weights from development machine if the board has no internet access
 rsync -avP user@devmachine:path/to/models/*.pt models/
 ```
 
@@ -289,7 +289,7 @@ rsync -avP user@devmachine:path/to/models/*.pt models/
 
 ```bash
 source .venv/bin/activate
-DEVICE_PROFILE=$(pwd)/edge/profiles/arduino_uno_q.yaml jupyter lab --no-browser --port=8888
+DEVICE_PROFILE=$(pwd)/edge/profiles/arduino_uno_q.yaml jupyter lab --no-browser --ip=0.0.0.0 --port=8888
 ```
 
 > **Note:** yolo26n and yolo26s are expected to load; yolo26m and above will

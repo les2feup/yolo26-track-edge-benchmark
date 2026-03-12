@@ -39,9 +39,9 @@ class DeviceProfile:
     device_label: str
     os: str
     torch_device: str
-    backend: str              # cpu | cuda | tensorrt | tensorrt_hq | hailo | qnn
+    backend: str              # cpu | cuda | tensorrt | tensorrt_hq | hailo | qnn | ncnn
     model_variants: list[str]
-    model_format: str         # pt | engine | hef | onnx | tflite
+    model_format: str         # pt | engine | hef | onnx | tflite | ncnn_model
     resolutions: list[int]
     warmup_frames: int
     result_tag: str
@@ -117,22 +117,24 @@ def _from_yaml(path: Path) -> DeviceProfile:
 
 
 # Backends with fixed input shapes baked in at compile time.
-# Model files encode the resolution in the filename suffix (no suffix = 640px).
-_BAKED_RESOLUTION_BACKENDS = {"hailo", "tensorrt", "tensorrt_hq", "qnn"}
+# Model paths encode the resolution in the filename (no resolution = 640px default).
+_BAKED_RESOLUTION_BACKENDS = {"hailo", "tensorrt", "tensorrt_hq", "qnn", "ncnn"}
 
 
 def baked_imgsz(model_path: str) -> int:
-    """Derive the compile-time resolution from a model filename.
+    """Derive the compile-time resolution from a model filename or folder name.
 
-    Works for any backend that bakes resolution into the filename:
-        yolo26n.engine      → 640   (no suffix = canonical 640px)
-        yolo26n_576.hef     → 576
-        yolo26s_512.engine  → 512
-        yolo26n_576_hq.hef  → 576   (quality tag stripped)
+    Works for any backend that bakes resolution into the path:
+        yolo26n.engine           → 640   (no resolution = canonical 640px)
+        yolo26n_576.hef          → 576
+        yolo26s_512.engine       → 512
+        yolo26n_576_hq.hef       → 576   (quality tag stripped)
+        yolo26n_640_ncnn_model   → 640   (_ncnn_model folder suffix stripped)
     """
-    stem = model_path.rsplit(".", 1)[0]
-    # Strip known quality-tag suffixes before resolution parsing
-    for tag in ("_hq", "_lq"):
+    # Strip file extension if present; for directories the path has no extension
+    stem = model_path.rsplit(".", 1)[0] if "." in Path(model_path).name else model_path
+    # Strip known trailing tags before resolution parsing
+    for tag in ("_ncnn_model", "_hq", "_lq", "_qnn"):
         if stem.endswith(tag):
             stem = stem[: -len(tag)]
             break
@@ -203,6 +205,13 @@ def try_load_model(model_name: str, device: str) -> tuple:
 
     try:
         from ultralytics import YOLO
+        # NCNN models are directories ending in _ncnn_model. Ultralytics requires
+        # task="detect" explicitly because metadata.yaml is stripped from the folder
+        # to reduce transfer size, so autobackend cannot infer the task.
+        # NCNN runs CPU-only — skip .to(device).
+        if resolved.is_dir() and resolved.name.endswith("_ncnn_model"):
+            model = YOLO(str(resolved), task="detect")
+            return model, None
         model = YOLO(str(resolved))
         # TensorRT engines manage their own device — skip .to() for .engine files
         if resolved.suffix != ".engine":
@@ -246,7 +255,7 @@ def apply_thread_pinning(profile: DeviceProfile) -> None:
     set before importing torch so the BLAS backends pick them up.
     No-op for all other profiles.
     """
-    if profile.device_id != "rpi4":
+    if profile.device_id not in ("rpi4", "arduino_uno_q", "arduino_uno_q_qnn"):
         return
 
     os.environ["OMP_NUM_THREADS"] = "4"
@@ -259,7 +268,12 @@ def apply_thread_pinning(profile: DeviceProfile) -> None:
     import cv2
 
     torch.set_num_threads(4)
-    torch.set_num_interop_threads(1)
+    # set_num_interop_threads(1) combined with set_num_threads(4) silently
+    # corrupts inference on Qualcomm torch 2.0.0.post4 (QRB2210 / Cortex-A53).
+    # Each call works individually but the combination produces zero detections.
+    # Skip interop pinning for Arduino UNO Q; RPi4's standard torch is unaffected.
+    if profile.device_id not in ("arduino_uno_q", "arduino_uno_q_qnn"):
+        torch.set_num_interop_threads(1)
     cv2.setNumThreads(1)
 
 
