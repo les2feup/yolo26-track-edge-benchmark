@@ -62,6 +62,9 @@ def run_evaluation_isolated(
         else:
             # Dynamic backends (cpu, cuda, tensorrt via ultralytics) and other
             # baked-resolution backends all use the standard runner.
+            import logging
+            logging.getLogger("ultralytics").setLevel(logging.WARNING)
+
             from benchmark.runner import run_sequence
 
             model, err = try_load_model(model_path, torch_device)
