@@ -11,14 +11,17 @@ device_label: "Arduino Uno Q (QRB2210)"
 os: debian_arm
 
 torch_device: cpu
-backend: cpu
+backend: ncnn
 
 model_variants:
-  - yolo26n.pt
-  - yolo26s.pt
-  - yolo26m.pt
+  - yolo26n_640_ncnn_model
+  - yolo26n_576_ncnn_model
+  - yolo26s_640_ncnn_model
+  - yolo26s_576_ncnn_model
+  - yolo26m_640_ncnn_model
+  - yolo26m_576_ncnn_model 
 
-model_format: pt
+model_format: ncnn_model
 
 resolutions: [640, 576]
 
