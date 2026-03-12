@@ -26,7 +26,6 @@ import pycuda.driver as _cuda_drv
 from benchmark.config import CONF, CLASSES, WARMUP_FRAMES
 from benchmark.trt_infer import TrtInfer
 from benchmark.trt_postprocess import decode_detections
-from benchmark.runner import preprocess_frame   # CLAHE shared with pt runner
 
 try:
     import supervision as sv
@@ -41,7 +40,6 @@ def run_sequence_trt(
     seq_dir: Path,
     imgsz: int,
     out_csv: Path,
-    clahe: bool = False,
     max_duration_s: float | None = None,
     baseline_ram: int | None = None,
 ) -> pd.DataFrame:
@@ -64,7 +62,6 @@ def run_sequence_trt(
         seq_dir:      MOT17 sequence directory (contains img1/, gt/, seqinfo.ini).
         imgsz:        Inference resolution (must match engine's compiled input shape).
         out_csv:      Destination path for per-frame CSV.
-        clahe:        Apply CLAHE luminance normalisation before inference.
         baseline_ram: Process RSS (bytes) before framework imports, from worker.py.
 
     Returns:
@@ -111,8 +108,6 @@ def run_sequence_trt(
                 frame_id  = frame_idx + 1
                 frame_idx += 1
                 frame_bgr = cv2.imread(str(img_path))
-                if clahe:
-                    frame_bgr = preprocess_frame(frame_bgr)
 
                 # Inference: TRT engine produces 6 raw Conv outputs (NCHW)
                 t0  = time.perf_counter()
@@ -153,7 +148,7 @@ def run_sequence_trt(
 
                 footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
 
-                inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
+                inference_ms = (t1 - t0) * 1000 if frame_idx > WARMUP_FRAMES else float("nan")
 
                 records.append({
                     "frame_id":        frame_id,

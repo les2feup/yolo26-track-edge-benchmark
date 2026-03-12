@@ -5,32 +5,11 @@ import time
 from pathlib import Path
 
 import cv2
-import numpy as np
 import pandas as pd
 import psutil
 import torch
 
 from benchmark.config import CLASSES, CONF, TRACKER, WARMUP_FRAMES
-
-# CLAHE parameters: standard defaults — not tuned per sequence.
-_CLAHE_CLIP = 2.0
-_CLAHE_GRID = (8, 8)
-
-
-def preprocess_frame(frame: np.ndarray) -> np.ndarray:
-    """CLAHE contrast normalisation applied to the luminance channel.
-
-    Converts to LAB, equalises L, converts back to BGR. Colour channels
-    are untouched, preserving model feature extraction while improving
-    edge contrast in low-light regions. Parameters are fixed at standard
-    defaults across all sequences and resolution levels.
-    """
-    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=_CLAHE_CLIP, tileGridSize=_CLAHE_GRID)
-    lab_eq = cv2.merge([clahe.apply(l), a, b])
-    return cv2.cvtColor(lab_eq, cv2.COLOR_LAB2BGR)
-
 
 def run_sequence(
     model,
@@ -38,7 +17,6 @@ def run_sequence(
     imgsz: int,
     out_csv: Path,
     tracker: str | None = None,
-    clahe: bool = False,
     max_duration_s: float | None = None,
     mem_total_bytes: int | None = None,
     mem_delta_bytes: int | None = None,
@@ -69,7 +47,6 @@ def run_sequence(
         imgsz:           Inference resolution passed to model.track().
         out_csv:         Destination path for the per-frame CSV output.
         tracker:         Path to a custom tracker YAML. Defaults to TRACKER from config.
-        clahe:           Apply CLAHE luminance normalisation before inference.
         mem_total_bytes: Absolute peak process RSS supplied by the worker.
         mem_delta_bytes: Isolated model footprint (total − pre-import baseline).
 
@@ -128,8 +105,6 @@ def run_sequence(
             frame_id  = frame_idx + 1   # MOT17 uses 1-indexed frame IDs
             frame_idx += 1
             frame_bgr = cv2.imread(str(img_path))
-            if clahe:
-                frame_bgr = preprocess_frame(frame_bgr)
 
             t0      = time.perf_counter()
             track_kwargs = dict(
@@ -156,7 +131,7 @@ def run_sequence(
 
             # Skip warm-up frames for timing records but still run inference
             # to allow ByteTrack to build its internal track state.
-            inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
+            inference_ms = (t1 - t0) * 1000 if frame_idx > WARMUP_FRAMES else float("nan")
 
             records.append({
                 "frame_id":        frame_id,

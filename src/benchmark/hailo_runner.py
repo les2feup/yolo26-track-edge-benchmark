@@ -23,7 +23,6 @@ import psutil
 from benchmark.config import CONF, CLASSES, WARMUP_FRAMES
 from benchmark.hailo_infer import HailoInfer
 from benchmark.hailo_postprocess import decode_detections
-from benchmark.runner import preprocess_frame   # CLAHE shared with pt runner
 
 try:
     import supervision as sv
@@ -38,7 +37,6 @@ def run_sequence_hailo(
     seq_dir: Path,
     imgsz: int,
     out_csv: Path,
-    clahe: bool = False,
     max_duration_s: float | None = None,
     baseline_ram: int | None = None,
 ) -> pd.DataFrame:
@@ -58,7 +56,6 @@ def run_sequence_hailo(
         seq_dir:  MOT17 sequence directory (contains img1/, gt/, seqinfo.ini).
         imgsz:    Inference resolution (must match HEF input shape, usually 640).
         out_csv:  Destination path for per-frame CSV.
-        clahe:    Apply CLAHE luminance normalisation before inference.
 
     Returns:
         DataFrame with one row per frame.
@@ -103,8 +100,6 @@ def run_sequence_hailo(
                 frame_id  = frame_idx + 1
                 frame_idx += 1
                 frame_bgr = cv2.imread(str(img_path))
-                if clahe:
-                    frame_bgr = preprocess_frame(frame_bgr)
 
                 t0 = time.perf_counter()
                 raw = model.infer(frame_bgr)
@@ -143,7 +138,7 @@ def run_sequence_hailo(
 
                 footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
 
-                inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
+                inference_ms = (t1 - t0) * 1000 if frame_idx > WARMUP_FRAMES else float("nan")
 
                 records.append({
                     "frame_id":        frame_id,

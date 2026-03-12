@@ -34,8 +34,8 @@ Notes:
       hailo_model_zoo v5.x dropped Hailo-8/8L support — DO NOT use v5.x.
     - hailo8l is the correct --hw-arch for the Raspberry Pi AI Kit M.2 hat.
     - ONNX opset 11 is required; higher opsets have known DFC parser issues.
-    - If yolo26 ONNX graph is not recognised by hailomz, use --fallback-parser
-      which invokes the three-step DFC API (parse → optimize → compile) directly.
+    - The DFC three-step API (parse → optimize → compile) is used directly;
+      hailomz is not involved.
     - Calibration images: 64–200 unlabelled representative frames are sufficient.
       Collect them from MOT17 img1/ directories: edge/collect_calib.py
     - --high-quality enables post-quantization tuning to recover accuracy lost by
@@ -180,7 +180,6 @@ def compile_hef(
     onnx_path: Path,
     calib_dir: Path,
     hw_arch: str,
-    fallback_parser: bool,
     imgsz: int = 640,
     high_quality: bool = False,
 ) -> tuple[Path | None, str]:
@@ -302,7 +301,6 @@ def export_one(
     model_name: str,
     calib_dir: Path,
     hw_arch: str,
-    fallback_parser: bool,
     imgsz: int = 640,
     high_quality: bool = False,
 ) -> dict:
@@ -327,7 +325,7 @@ def export_one(
         return record
 
     hef_path, err = compile_hef(
-        onnx_path, calib_dir, hw_arch, fallback_parser,
+        onnx_path, calib_dir, hw_arch,
         imgsz=imgsz, high_quality=high_quality,
     )
     if err:
@@ -355,8 +353,6 @@ def main() -> None:
                         help="Target Hailo architecture (default: hailo8l for RPi AI Kit)")
     parser.add_argument("--imgsz",           type=int, default=640,
                         help="Input resolution in pixels (default: 640; e.g. 576 for a second sweep)")
-    parser.add_argument("--fallback-parser", action="store_true",
-                        help="Skip hailomz and use DFC three-step API directly")
     parser.add_argument("--high-quality",   action="store_true",
                         help="Enable a16_w16 detection heads + Adaround + bias correction "
                              "(slower, produces *_hq.hef alongside defaults)")
@@ -373,7 +369,7 @@ def main() -> None:
     for variant in variants:
         print(f"\n{'='*60}\nExporting {variant} @ {args.imgsz}px{hq_label}\n{'='*60}")
         rec = export_one(
-            variant, args.calib_dir, args.hw_arch, args.fallback_parser,
+            variant, args.calib_dir, args.hw_arch,
             imgsz=args.imgsz, high_quality=args.high_quality,
         )
         results.append(rec)

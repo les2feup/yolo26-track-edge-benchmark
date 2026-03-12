@@ -71,11 +71,14 @@ def load_profile(path: str | Path | None = None) -> DeviceProfile:
         apply_device_workarounds(profile)
         return profile
 
-    # Auto-detect: try to match hostname to a known profile
+    # Auto-detect: try to match hostname to a known profile.
+    # One entry per hostname fragment — hosts that run multiple backends
+    # (e.g. rpi5-b-hailo running both Hailo and CPU/NCNN) must select
+    # the profile explicitly via DEVICE_PROFILE instead of relying on
+    # auto-detection.
     hostname = socket.gethostname().lower()
     candidates = {
         "rpi5-b-hailo": "rpi5_hailo.yaml",
-        "rpi5-b-hailo": "rpi5_cpu.yaml",
         "rpi4":         "rpi4.yaml",
         "jetson-nano":  "jetson_nano.yaml",
         "les2-seed-studio-j10": "jetson_nano.yaml",
