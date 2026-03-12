@@ -32,7 +32,7 @@ Usage:
 Outputs:
     models/yolo26n_hq.onnx       — surgered ONNX (6 raw Conv outputs, no Mod ops)
     models/yolo26n_hq.engine     — TRT engine compiled from surgered ONNX
-    edge/export_results_jetson_hq.csv — success/failure summary
+    edge/export/logs/export_results_jetson_hq.csv — success/failure summary
 """
 
 from __future__ import annotations
@@ -410,7 +410,7 @@ def main() -> None:
             print(f"  [{tag}] {stem}  {rec.get('engine_mb', '')} MB  {rec.get('notes', '')}")
 
     # Append results to CSV log
-    summary_path = _ROOT / "edge" / "export_results_jetson_hq.csv"
+    summary_path = _ROOT / "edge" / "export" / "logs" / "export_results_jetson_hq.csv"
     file_exists  = summary_path.exists()
     fieldnames   = ["model", "imgsz", "fp16", "status", "engine_mb", "elapsed_s", "notes"]
     with open(summary_path, "a", newline="") as f:

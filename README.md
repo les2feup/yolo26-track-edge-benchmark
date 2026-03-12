@@ -328,7 +328,7 @@ docker compose -f edge/docker-compose.yml run --rm hailo-export
 ```
 
 Output HEF files appear in `models/`. A provenance CSV is written to
-`edge/export_results.csv`.
+`edge/export/logs/export_results.csv`.
 
 ---
 

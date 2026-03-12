@@ -28,7 +28,7 @@ Usage:
 
 Outputs:
     models/yolo26n.engine, models/yolo26n_576.engine, ...
-    edge/export_results_jetson.csv — success/failure summary
+    edge/export/logs/export_results_jetson.csv — success/failure summary
 """
 
 from __future__ import annotations
@@ -232,7 +232,7 @@ def main() -> None:
             results.append(rec)
 
     # Append results to CSV log
-    summary_path = _ROOT / "edge" / "export_results_jetson.csv"
+    summary_path = _ROOT / "edge" / "export" / "logs" / "export_results_jetson.csv"
     file_exists  = summary_path.exists()
     fieldnames   = ["model", "imgsz", "half", "status", "engine_mb", "elapsed_s", "notes"]
     with open(summary_path, "a", newline="") as f:

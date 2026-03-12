@@ -27,7 +27,7 @@ Usage:
 
 Outputs:
     models/yolo26n.hef (and .har intermediate)
-    edge/export_results.csv — success/failure summary for each variant
+    edge/export/logs/export_results.csv — success/failure summary for each variant
 
 Notes:
     - DFC v3.32 / HailoRT 4.22 is the LAST stable version supporting Hailo-8L.
@@ -381,7 +381,7 @@ def main() -> None:
         print(f"[{status_tag}] {variant} @ {args.imgsz}px  {rec.get('hef_path', '')}  {rec.get('notes', '')}")
 
     # Write summary CSV — append rows so existing 640-px results are preserved
-    summary_path = _ROOT / "edge" / "export_results.csv"
+    summary_path = _ROOT / "edge" / "export" / "logs" / "export_results.csv"
     file_exists  = summary_path.exists()
     fieldnames   = ["model", "imgsz", "quality", "status", "hef_path", "notes"]
     with open(summary_path, "a", newline="") as f:

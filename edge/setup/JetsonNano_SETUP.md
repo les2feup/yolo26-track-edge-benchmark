@@ -58,16 +58,11 @@ sudo jetson_clocks                   # max out CPU/GPU/EMC clocks
 
 **These settings do not persist across reboots.** Re-run both commands after every power cycle. Verify with `jtop` (see Step 3) — the status line should show `Jetson Clocks: active`.
 
-To make jetson_clocks run automatically at boot:
-```bash
-sudo systemctl enable jetson_clocks
-```
-
 ---
 
 ## Step 3 — Install jtop (recommended)
 
-`jtop` provides a real-time dashboard for GPU utilisation, clock frequencies, memory, and temperature. Essential for verifying performance mode and diagnosing OOM during benchmarks.
+`jtop` provides a real-time dashboard for GPU utilisation, clock frequencies, memory, and temperature. Essential for verifying performance mode and diagnosing issues during benchmarks.
 
 ```bash
 sudo pip3 install jetson-stats
@@ -85,7 +80,7 @@ The Nano shares 4 GB between CPU and GPU. Extra swap reduces OOM kills during mo
 
 ```bash
 # Create a 4 GB swap file on the SD card (adjust mount point as needed)
-SD_MOUNT=/media/les2/SD-128-J10
+SD_MOUNT=<SD_CARD_MOUNT_POINT>  # e.g., /media/les2/SD-128-J10  
 sudo fallocate -l 4G "$SD_MOUNT/swapfile"
 sudo chmod 600 "$SD_MOUNT/swapfile"
 sudo mkswap "$SD_MOUNT/swapfile"
@@ -126,7 +121,9 @@ rsync -avz --exclude='.venv' --exclude='__pycache__' --exclude='.git' --exclude=
   ~/Developer/yolo26-track-edge-benchmark/ \
   les2@${NANO_IP}:${SD}/yolo26-track-edge-benchmark/
 
-# Transfer the .pt model weights
+# Or clone directly on the Nano if you have internet access.
+
+# If the Nano has internet access, ultralytics will auto-download the weights on first run. If not, copy them from the development machine:
 rsync -avz models/*.pt les2@${NANO_IP}:${SD}/yolo26-track-edge-benchmark/models/
 
 # Transfer MOT17 dataset (~5 GB for three sequences)
@@ -135,14 +132,14 @@ rsync -avz --progress \
   les2@${NANO_IP}:${SD}/yolo26-track-edge-benchmark/data/MOT17/train/
 ```
 
-_Instead, you can download the dataset following the instruction in [README.md](../data/README.md)._
+_If the file is not available, you can download the dataset following the instruction in [README.md](../data/README.md)._
 
 ---
 
 ## Step 7 — Create virtual environment (on SD card)
 
 ```bash
-SD=/media/les2/SD-128-J10
+SD=<SD_CARD_MOUNT_POINT>  # e.g., /media/les2/SD-128-J10
 cd $SD/yolo26-track-edge-benchmark
 
 python3.8 -m venv .venv
@@ -195,7 +192,7 @@ python -c "import cv2; print(f'OpenCV {cv2.__version__}')"
 ## Step 10 — Install project dependencies
 
 ```bash
-pip install -r edge/requirements-jetson.txt
+pip install -r requirements-jetson.txt
 pip install -e .
 ```
 
@@ -227,31 +224,12 @@ Both resolutions should produce detections. Expected: ~6 detections at 640px mat
 Verify performance mode is active before starting:
 ```bash
 sudo jetson_clocks --show   # all clocks should be at maximum
-```
 
-### Option A: Script-based (recommended for SSH)
+# To run the CUDA backend with the standard profile:
+DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano.yaml jupyter lab --ip=0.0.0.0 --no-browser --port=8888
 
-```bash
-DEVICE_PROFILE=jetson_nano.yaml python -c "
-from benchmark.device_profile import load_profile
-p = load_profile()
-print(f'Device: {p.device_label}')
-print(f'Backend: {p.backend}, torch_device: {p.torch_device}')
-print(f'Models: {p.model_variants}')
-print(f'Resolutions: {p.resolutions}')
-"
-```
-
-Then open notebook 01 or run the benchmark loop programmatically.
-
-### Option B: Jupyter Lab
-
-```bash
-DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano.yaml jupyter lab \
-  --ip=0.0.0.0 --no-browser --port=8888
-
-DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano_trt.yaml jupyter lab \
-  --ip=0.0.0.0 --no-browser --port=8888
+# To run the TensorRT backend with the TRT-specific profile:
+DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano_trt.yaml jupyter lab --ip=0.0.0.0 --no-browser --port=8888
 ```
 
 Connect from the host browser using the URL printed in the terminal.
@@ -268,7 +246,9 @@ SD=/media/les2/SD-128-J10
 rsync -avz les2@${NANO_IP}:${SD}/yolo26-track-edge-benchmark/results/raw/ results/raw/
 ```
 
-Results are tagged with `_jetson_nano` suffix and can be processed by notebooks 02–03 on the desktop.
+You can also sync through GitHub if you have push access — just commit and push from the Nano, then pull on the host.
+
+Results are tagged with `_jetson_nano` or `_jetson_nano_trt` suffix.
 
 ---
 
@@ -289,12 +269,4 @@ This is added to the venv activation script in Step 7. If you created the venv b
 **ultralytics version pinning**: All devices pin `ultralytics==8.4.19` for cross-device reproducibility. NMS and post-processing logic differs between versions. ultralytics 8.4.19 is compatible with Python 3.8.
 
 **PyTorch version differences across devices**: The Jetson Nano runs torch 1.11 (the only available cp38/CUDA 10.2/aarch64 wheel), while the RPi 4 uses torch 2.0 (Miniforge, ARMv8.0-A compatible) and the RPi 5 / desktop may use torch 2.x+. Verified experimentally: `.pt` FP32 produces identical detections (6 det, matching confidences to 3 decimal places) across torch 1.11 and torch 2.x, so this is not a practical concern for this model.
-
-**`motmetrics` + NumPy 2.x**: Not an issue — NumPy is pinned to 1.x in `requirements-jetson.txt`.
-
-**JupyterLab slow to start**: First cold start takes 60–90s on the Nano. Subsequent starts are faster.
-
-**Shared memory budget**: The 4 GB is shared between CPU and GPU. Larger models (yolo26m and above) may fail to load at runtime. The benchmark runner logs these failures and skips them automatically.
-
-**SD card I/O**: Dataset reads from the SD card are slow. If inference latency appears unreasonably high on the first sequence, it may be I/O-bound. The timing in `runner.py` measures only `model.track()`, not frame reads, so this should not affect results.
 
