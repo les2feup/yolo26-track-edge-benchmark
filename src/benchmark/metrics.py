@@ -52,15 +52,11 @@ def compute_mot_metrics(raw_csv: Path, seq_dir: Path) -> dict:
     mean_ms = float(raw_df["inference_ms"].mean(skipna=True))
     fps     = 1000.0 / mean_ms if mean_ms > 0 else float("nan")
 
-    # Model-isolated memory footprint: delta over pre-import baseline, so framework
-    # overhead (Python + NCNN/PyTorch/CUDA context) does not dominate the metric.
-    # Falls back to absolute RSS for legacy CSVs that pre-date the two-column schema.
-    if "mem_delta_bytes" in raw_df.columns:
-        peak_mem_mb = float(raw_df["mem_delta_bytes"].max()) / 1e6
-    elif "mem_bytes" in raw_df.columns:
-        peak_mem_mb = float(raw_df["mem_bytes"].max()) / 1e6
-    else:
-        peak_mem_mb = float("nan")
+    # Full-process RSS: Python + framework + model weights. This is the deployment-
+    # relevant figure for edge devices where the framework floor dominates RSS and
+    # model-weight deltas are below measurement resolution.
+    mem_col = next((c for c in ("mem_total_bytes", "mem_bytes") if c in raw_df.columns), None)
+    peak_mem_mb = float(raw_df[mem_col].max()) / 1e6 if mem_col else float("nan")
 
     num_switches   = int(summary.loc["seq", "num_switches"])
     n_gt_tracks    = int(gt_df["track_id"].nunique())
