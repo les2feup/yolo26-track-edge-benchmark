@@ -324,9 +324,19 @@ def export_one(variant: str, imgsz: int, fp16: bool, workspace_mb: int,
     }
 
     if not pt_path.exists():
-        record["status"] = "skipped"
-        record["notes"]  = f".pt not found: {pt_path}"
-        return record
+        print(f"  [download] {pt_path.name} not found — downloading from Ultralytics hub")
+        try:
+            from ultralytics import YOLO
+            _MODELS_DIR.mkdir(parents=True, exist_ok=True)
+            m = YOLO(f"{variant}.pt")          # downloads to ~/.cache/ultralytics/
+            import shutil as _shutil
+            cached = Path(m.ckpt_path)
+            _shutil.copy(cached, pt_path)
+            print(f"  [download] saved to {pt_path}")
+        except Exception as dl_err:
+            record["status"] = "skipped"
+            record["notes"]  = f"download failed: {dl_err}"
+            return record
 
     engine_path = _MODELS_DIR / f"{stem}.engine"
     if engine_path.exists() and not force:
