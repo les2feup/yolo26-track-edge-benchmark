@@ -95,18 +95,31 @@ def _find_trtexec() -> str:
 # ---------------------------------------------------------------------------
 
 def _release_cuda():
-    """Release any CUDA context held by PyTorch so trtexec can acquire the GPU.
+    """Tear down PyTorch's CUDA context so trtexec can acquire the GPU.
 
-    On Jetson Nano (Maxwell, single GPU context), PyTorch's CUDA allocator
-    can block trtexec from initialising if the context isn't explicitly freed.
+    On Jetson Nano (Maxwell, single GPU context), empty_cache() alone is not
+    enough — the CUDA primary context stays alive. We must also unload the
+    CUDA runtime from the process by removing all torch.cuda references and
+    forcing the driver to release the context via cudaDeviceReset().
     """
     try:
         import torch
         if torch.cuda.is_available():
-            torch.cuda.empty_cache()
             torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+            # cudaDeviceReset() releases the primary context on the device
+            if hasattr(torch.cuda, '_lazy_init'):
+                torch.cuda._initialized = False
             import gc
             gc.collect()
+            # Final barrier: call cudaDeviceReset via ctypes
+            try:
+                import ctypes
+                libcudart = ctypes.CDLL("libcudart.so")
+                rc = libcudart.cudaDeviceReset()
+                print(f"  [cuda] cudaDeviceReset() → rc={rc}")
+            except OSError:
+                print("  [cuda] cudaDeviceReset() unavailable — relying on gc")
             print("  [cuda] released PyTorch CUDA context")
     except ImportError:
         pass
@@ -452,7 +465,8 @@ def main() -> None:
             print(f"  [{tag}] {stem}  {rec.get('engine_mb', '')} MB  {rec.get('notes', '')}")
 
     # Append results to CSV log
-    summary_path = _ROOT / "edge" / "export" / "logs" / "export_results_jetson_hq.csv"
+    summary_path = _ROOT / "export" / "logs" / "export_results_jetson_hq.csv"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
     file_exists  = summary_path.exists()
     fieldnames   = ["model", "imgsz", "fp16", "status", "engine_mb", "elapsed_s", "notes"]
     with open(summary_path, "a", newline="") as f:
