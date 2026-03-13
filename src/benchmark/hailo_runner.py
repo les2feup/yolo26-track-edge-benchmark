@@ -23,7 +23,6 @@ import psutil
 from benchmark.config import CONF, CLASSES, WARMUP_FRAMES
 from benchmark.hailo_infer import HailoInfer
 from benchmark.hailo_postprocess import decode_detections
-from benchmark.runner import preprocess_frame   # CLAHE shared with pt runner
 
 try:
     import supervision as sv
@@ -38,15 +37,16 @@ def run_sequence_hailo(
     seq_dir: Path,
     imgsz: int,
     out_csv: Path,
-    clahe: bool = False,
     max_duration_s: float | None = None,
+    baseline_ram: int | None = None,
 ) -> pd.DataFrame:
     """
     Per-frame Hailo-8L tracking loop for one MOT17 sequence.
 
     Timing protocol matches runner.run_sequence():
     - First WARMUP_FRAMES are run but their inference_ms is recorded as NaN.
-    - GPU memory measurement is not applicable; CPU RSS is used instead.
+    - Host RSS delta around HailoInfer construction is used as memory footprint
+      (NPU SRAM usage is opaque; this captures driver + I/O buffer allocations).
 
     The output CSV schema is identical to runner.run_sequence() so that
     compute_mot_metrics() and all notebook aggregation cells work unchanged.
@@ -56,7 +56,6 @@ def run_sequence_hailo(
         seq_dir:  MOT17 sequence directory (contains img1/, gt/, seqinfo.ini).
         imgsz:    Inference resolution (must match HEF input shape, usually 640).
         out_csv:  Destination path for per-frame CSV.
-        clahe:    Apply CLAHE luminance normalisation before inference.
 
     Returns:
         DataFrame with one row per frame.
@@ -67,11 +66,14 @@ def run_sequence_hailo(
     seq_name    = seq_dir.name.rsplit("-", 1)[0]   # "MOT17-09-SDP" → "MOT17-09"
     model_name  = Path(hef_path).name
 
-    process = psutil.Process()
     tracker = sv.ByteTrack()
     records = []
 
+    _process = psutil.Process()
+    _rss_before = baseline_ram if baseline_ram is not None else _process.memory_info().rss
     with HailoInfer(hef_path) as model:
+        mem_total_bytes = _process.memory_info().rss
+        mem_delta_bytes = max(mem_total_bytes - _rss_before, 0)
         # HEF input resolution is fixed at compile time — always use this for
         # coordinate decoding and scaling, regardless of the requested imgsz.
         hef_h, hef_w, _ = model.input_shape
@@ -98,8 +100,6 @@ def run_sequence_hailo(
                 frame_id  = frame_idx + 1
                 frame_idx += 1
                 frame_bgr = cv2.imread(str(img_path))
-                if clahe:
-                    frame_bgr = preprocess_frame(frame_bgr)
 
                 t0 = time.perf_counter()
                 raw = model.infer(frame_bgr)
@@ -113,16 +113,17 @@ def run_sequence_hailo(
                 )
 
                 # Feed detections into supervision ByteTrack (still in model space)
-                if boxes_xyxy:
+                if len(boxes_xyxy):
                     dets = sv.Detections(
-                        xyxy=np.array(boxes_xyxy, dtype=np.float32),
-                        confidence=np.array(confs, dtype=np.float32),
-                        class_id=np.array(cls_ids, dtype=np.int32),
+                        xyxy=boxes_xyxy,
+                        confidence=confs,
+                        class_id=cls_ids,
                     )
                 else:
                     dets = sv.Detections.empty()
 
                 tracked = tracker.update_with_detections(dets)
+                t2 = time.perf_counter()
 
                 track_ids   = tracked.tracker_id.tolist() if tracked.tracker_id is not None else []
                 track_confs = tracked.confidence.tolist()  if tracked.confidence is not None else []
@@ -138,21 +139,24 @@ def run_sequence_hailo(
 
                 footpoints = [((x1 + x2) / 2, y2) for x1, y1, x2, y2 in bboxes]
 
-                inference_ms = (t1 - t0) * 1000 if frame_idx >= WARMUP_FRAMES else float("nan")
-                mem_bytes    = process.memory_info().rss
+                inference_ms   = (t1 - t0) * 1000 if frame_idx > WARMUP_FRAMES else float("nan")
+                postprocess_ms = (t2 - t1) * 1000 if frame_idx > WARMUP_FRAMES else float("nan")
 
                 records.append({
-                    "frame_id":     frame_id,
-                    "inference_ms": inference_ms,
-                    "n_detections": len(track_ids),
-                    "track_ids":    json.dumps(track_ids),
-                    "bboxes_xyxy":  json.dumps(bboxes),
-                    "confs":        json.dumps(track_confs),
-                    "footpoints":   json.dumps(footpoints),
-                    "mem_bytes":    mem_bytes,
-                    "imgsz":        hef_imgsz,
-                    "model":        model_name,
-                    "seq":          seq_name,
+                    "frame_id":        frame_id,
+                    "inference_ms":    inference_ms,
+                    "postprocess_ms":  postprocess_ms,
+                    "n_detections":    len(track_ids),
+                    "track_ids":       json.dumps(track_ids),
+                    "bboxes_xyxy":     json.dumps(bboxes),
+                    "confs":           json.dumps(track_confs),
+                    "footpoints":      json.dumps(footpoints),
+                    "mem_total_bytes": mem_total_bytes,
+                    "mem_delta_bytes": mem_delta_bytes,
+                    "mem_bytes":       mem_total_bytes,   # backward-compat alias
+                    "imgsz":           hef_imgsz,
+                    "model":           model_name,
+                    "seq":             seq_name,
                 })
 
             # Single-pass mode: no time budget → exit after one pass

@@ -285,7 +285,7 @@ async def collect(
                     while True:
                         if stop_event is not None and stop_event.is_set():
                             break
-                        if (time.monotonic() - t_start) >= duration_s:
+                        if stop_event is None and (time.monotonic() - t_start) >= duration_s:
                             break
 
                         buf.clear()
@@ -384,7 +384,7 @@ def collect_serial(
         while True:
             if stop_event is not None and stop_event.is_set():
                 break
-            if (time.monotonic() - t_start) >= duration_s:
+            if stop_event is None and (time.monotonic() - t_start) >= duration_s:
                 break
 
             ser.reset_input_buffer()

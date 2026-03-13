@@ -1,0 +1,59 @@
+# Jetson Nano (JetPack 4.6.x) — Python 3.8 compatible dependencies
+#
+# Prerequisites (installed separately via wheels, NOT from PyPI):
+#   torch==1.11.0       — ultralytics-hosted cp38 aarch64 wheel
+#   torchvision==0.12.0 — ultralytics-hosted cp38 aarch64 wheel
+#   opencv (cv2)        — system JetPack build, symlinked into venv
+#
+# All version ceilings below are dictated by torch 1.11 + NumPy 1.x + Python 3.8.
+# See edge/JetsonNano_SETUP.md for full installation instructions.
+
+# YOLO inference and integrated ByteTrack tracking
+# Pinned to match all devices — cross-device reproducibility requires identical NMS/post-processing.
+ultralytics==8.4.19
+lap>=0.5.12
+
+# MOT evaluation metrics (MOTA, IDF1, IDSW, MT, ML)
+motmetrics>=1.4.0
+
+# NumPy 1.x only — torch 1.11 is incompatible with NumPy 2.x
+numpy>=1.21.0,<2.0.0
+
+# Scientific computing (upper bound avoids Python 3.9+ requirement)
+scipy>=1.7.0,<1.12.0
+
+# Data handling (upper bound avoids NumPy 2.x dependency)
+pandas>=1.3.0,<2.1.0
+
+# Paper figures
+matplotlib>=3.5.0,<3.8.0
+
+# CPU memory measurement
+psutil>=5.9.0
+
+# YAML profile loader
+pyyaml>=6.0
+
+# TC66C USB serial power meter
+pyserial>=3.5
+pycryptodome>=3.9.0
+
+# Jupyter notebooks
+jupyterlab>=3.0,<4.0
+ipykernel>=6.0
+ipywidgets>=7.0,<9.0
+
+# git notebook output stripping
+nbstripout>=0.6.0
+
+# TensorRT HQ pipeline — ONNX graph surgery (export_tensorrt_hq.py)
+# onnx-graphsurgeon is pure Python, no native deps
+onnx>=1.12.0,<1.15.0
+onnx_graphsurgeon>=0.3.0
+
+# TensorRT HQ inference (trt_infer.py) — pycuda builds against system CUDA 10.2
+# tensorrt wheel must be installed separately: tensorrt-8.2.0.6-cp38-none-linux_aarch64.whl
+pycuda>=2022.1,<2024.1
+
+# TensorRT HQ tracking — supervision ByteTrack (no ultralytics dependency)
+supervision>=0.18.0,<0.22.0

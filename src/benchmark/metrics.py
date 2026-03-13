@@ -52,8 +52,11 @@ def compute_mot_metrics(raw_csv: Path, seq_dir: Path) -> dict:
     mean_ms = float(raw_df["inference_ms"].mean(skipna=True))
     fps     = 1000.0 / mean_ms if mean_ms > 0 else float("nan")
 
-    # Peak memory in MB (GPU: cumulative peak; CPU: max RSS observed across frames)
-    peak_mem_mb = float(raw_df["mem_bytes"].max()) / 1e6 if "mem_bytes" in raw_df.columns else float("nan")
+    # Full-process RSS: Python + framework + model weights. This is the deployment-
+    # relevant figure for edge devices where the framework floor dominates RSS and
+    # model-weight deltas are below measurement resolution.
+    mem_col = next((c for c in ("mem_total_bytes", "mem_bytes") if c in raw_df.columns), None)
+    peak_mem_mb = float(raw_df[mem_col].max()) / 1e6 if mem_col else float("nan")
 
     num_switches   = int(summary.loc["seq", "num_switches"])
     n_gt_tracks    = int(gt_df["track_id"].nunique())
