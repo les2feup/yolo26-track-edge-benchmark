@@ -37,3 +37,6 @@ pyserial>=3.5
 
 # Allow asyncio.run() inside Jupyter's event loop (power profiling notebook)
 nest_asyncio>=1.6.0
+
+# Power profiling (optional, requires TC66C meter and BLE adapter)
+codecarbon>=3.2.3
