@@ -14,8 +14,6 @@ __pycache__/
 models/*.pt
 models/*.onnx
 models/*.har
-models/*.engine
-models/*_ncnn_model/
 notebooks/*.pt
 
 # Hailo proprietary wheels — not redistributable; place manually
