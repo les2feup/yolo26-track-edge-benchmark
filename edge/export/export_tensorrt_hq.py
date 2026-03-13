@@ -43,6 +43,7 @@ import shutil
 import subprocess
 import sys
 import time
+import signal
 from pathlib import Path
 
 _ROOT       = Path(__file__).parents[1]
@@ -92,6 +93,24 @@ def _find_trtexec() -> str:
 # ---------------------------------------------------------------------------
 # Stage 1: .pt → .onnx (standard ultralytics export)
 # ---------------------------------------------------------------------------
+
+def _release_cuda():
+    """Release any CUDA context held by PyTorch so trtexec can acquire the GPU.
+
+    On Jetson Nano (Maxwell, single GPU context), PyTorch's CUDA allocator
+    can block trtexec from initialising if the context isn't explicitly freed.
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            import gc
+            gc.collect()
+            print("  [cuda] released PyTorch CUDA context")
+    except ImportError:
+        pass
+
 
 def export_onnx(pt_path: Path, imgsz: int) -> Path:
     """Export PyTorch .pt to full ONNX graph (before surgery).
@@ -290,9 +309,19 @@ def compile_engine(onnx_path: Path, variant: str, imgsz: int,
     print(f"  [trtexec] {onnx_path.name} → {engine_path.name} ({prec})")
     print(f"  [trtexec] cmd: {' '.join(cmd)}")
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
+    # Retry up to 3 times on SIGABRT (rc=-6): stale CUDA context from a prior
+    # trtexec process not releasing the GPU cleanly. A brief pause lets the
+    # driver recover before the next attempt.
+    for attempt in range(1, 4):
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            break
+        aborted = (result.returncode == -signal.SIGABRT)
+        cuda_err = "no CUDA-capable device" in (result.stdout + result.stderr)
+        if aborted and cuda_err and attempt < 3:
+            print(f"  [trtexec] CUDA context stale (attempt {attempt}/3) — retrying in 5 s")
+            time.sleep(5)
+            continue
         output = result.stdout + result.stderr
         error_lines = [
             ln for ln in output.splitlines()
@@ -328,10 +357,10 @@ def export_one(variant: str, imgsz: int, fp16: bool, workspace_mb: int,
         try:
             from ultralytics import YOLO
             _MODELS_DIR.mkdir(parents=True, exist_ok=True)
-            m = YOLO(f"{variant}.pt")          # downloads to ~/.cache/ultralytics/
-            import shutil as _shutil
-            cached = Path(m.ckpt_path)
-            _shutil.copy(cached, pt_path)
+            # YOLO() auto-downloads when given a path that doesn't exist yet
+            YOLO(str(pt_path))
+            if not pt_path.exists():
+                raise FileNotFoundError(f"ultralytics did not produce {pt_path}")
             print(f"  [download] saved to {pt_path}")
         except Exception as dl_err:
             record["status"] = "skipped"
@@ -349,11 +378,14 @@ def export_one(variant: str, imgsz: int, fp16: bool, workspace_mb: int,
     try:
         t0 = time.time()
 
-        # Stage 1: .pt → full ONNX
+        # Stage 1: .pt → full ONNX (may initialise CUDA via PyTorch)
         onnx_full = export_onnx(pt_path, imgsz)
 
-        # Stage 2: graph surgery (cut end nodes + replace Mod)
+        # Stage 2: graph surgery (cut end nodes + replace Mod) — CPU only
         onnx_hq = surgery(onnx_full, variant, imgsz)
+
+        # Free PyTorch CUDA context before trtexec acquires the GPU
+        _release_cuda()
 
         # Stage 3: trtexec → .engine
         engine = compile_engine(onnx_hq, variant, imgsz, fp16, workspace_mb, force)
