@@ -21,9 +21,7 @@ backend: cuda
 model_variants:
   - yolo26n.pt
   - yolo26s.pt
-  - yolo26m.pt      # may OOM at runtime (4 GB shared memory)
-  - yolo26l.pt      # likely OOM — attempted for completeness
-  - yolo26x.pt      # likely OOM — attempted for completeness
+  - yolo26m.pt      
 
 model_format: pt
 
