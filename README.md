@@ -1,4 +1,4 @@
-![Header Logo of Laboratory of Emerging Smart Systems](./src/figures/les2banner.png)
+![Header Logo of Laboratory of Emerging Smart Systems](./figures/les2banner.png)
 
 # YOLO26 Track Edge Benchmark
 
