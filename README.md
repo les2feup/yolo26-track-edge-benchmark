@@ -1,5 +1,12 @@
 ![Header Logo of Laboratory of Emerging Smart Systems](./figures/les2banner.png)
 
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.19091528-blue.svg?logo=doi&logoColor=white)](https://doi.org/10.5281/zenodo.19091528)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Ultralytics 8.4.19](https://img.shields.io/badge/Ultralytics-8.4.19-00D4AA.svg?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+PHRleHQgeD0iMiIgeT0iMTUiIGZvbnQtc2l6ZT0iMTQiPvCfmoA8L3RleHQ+PC9zdmc+)](https://docs.ultralytics.com/)
+[![MOT17](https://img.shields.io/badge/Dataset-MOT17-orange.svg)](https://motchallenge.net/data/MOT17/)
+[![Jupyter](https://img.shields.io/badge/Jupyter-Notebooks-F37626.svg?logo=jupyter&logoColor=white)](notebooks/)
+
 # YOLO26 Track Edge Benchmark
 
 Benchmarks YOLO26 + ByteTrack tracking accuracy and throughput across model variants (n/s/m/l/x) and input resolutions on edge hardware. Experiments run from a single set of Jupyter notebooks, with per-device behaviour controlled by YAML profiles in `edge/profiles/`.
