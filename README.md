@@ -1,23 +1,21 @@
+![Header Logo of Laboratory of Emerging Smart Systems](./src/figures/les2banner.png)
+
 # YOLO26 Track Edge Benchmark
 
-Benchmarks YOLO26 + ByteTrack tracking accuracy and throughput across model
-variants (n/s/m/l/x) and input resolutions on edge hardware. Experiments run
-from a single set of Jupyter notebooks, with per-device behaviour controlled
-by YAML profiles in `edge/profiles/`.
+Benchmarks YOLO26 + ByteTrack tracking accuracy and throughput across model variants (n/s/m/l/x) and input resolutions on edge hardware. Experiments run from a single set of Jupyter notebooks, with per-device behaviour controlled by YAML profiles in `edge/profiles/`.
 
 ## Repository layout
 
 ```
 data/           MOT17 sequences (not tracked — download separately)
 edge/
-  profiles/     YAML device profiles
-  export_hailo.py       ONNX → HEF compiler (Docker, offline)
-  export_tensorrt.py    .pt → .onnx → .engine (on-device, reference only)
-  collect_calib.py      Calibration image sampler
-  JetsonNano_SETUP.md   Jetson Nano 13-step setup guide
-  RPi4_IMPLEMENTATION.md  RPi 4 Miniforge setup guide
-models/         Model weights (.pt / .hef / .engine — not tracked)
-notebooks/      00 setup · 01 profiling · 02 resolution · 03 figures · 04 power
+  profiles/      YAML device profiles
+  setup/        Per-device and per-toolchain setup guides
+  export/       Model export scripts (Hailo, TensorRT, NCNN, QNN) + calibration
+  custom/       Standalone profiling utilities (remote power, DUT worker)
+  power_log.py  TC66C USB power-meter CLI logger
+models/         Model weights (.pt / .hef / .engine / .onnx — not tracked)
+notebooks/      00 setup · 01 profiling · 02 resolution · 04 power · 07 temporal
 results/        CSV benchmark outputs (tracked) · figures (not tracked)
 src/benchmark/  Python package (editable install)
 ```
@@ -36,16 +34,7 @@ data/MOT17/train/MOT17-04/
 data/MOT17/train/MOT17-09/
 ```
 
-### 2 — Models
-
-Download the YOLO26 weights and place them in `models/`:
-
-```
-models/yolo26n.pt   models/yolo26s.pt   models/yolo26m.pt
-models/yolo26l.pt   models/yolo26x.pt
-```
-
-### 3 — Python environment
+### 2 — Python environment
 
 ```bash
 python3 -m venv .venv
@@ -54,22 +43,19 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-> Requires Python ≥ 3.12 on the development machine. Edge devices use
-> device-specific environments described below.
+> Requires Python ≥ 3.12 on the development machine. Edge devices use device-specific environments described below.
 
 ---
 
 ## Running the notebooks
 
-All experiment notebooks read a single environment variable to select the
-active device profile:
+All experiment notebooks read a single environment variable to select the active device profile:
 
 ```bash
 DEVICE_PROFILE=edge/profiles/<profile>.yaml jupyter lab
 ```
 
-If `DEVICE_PROFILE` is unset, the notebooks fall back to a desktop profile
-(full resolution set, CUDA if available, `.pt` weights).
+If `DEVICE_PROFILE` is unset, the notebooks fall back to a desktop profile (full resolution set, CUDA if available, `.pt` weights).
 
 Notebook order:
 
@@ -78,44 +64,33 @@ Notebook order:
 | `00_setup_verify.ipynb` | Verify environment, model load, and data paths |
 | `01_experiment1_profiling.ipynb` | Latency and memory across model variants |
 | `02_experiment2_resolution.ipynb` | Tracking metrics vs. input resolution |
-| `03_results_figures.ipynb` | Figures and tables (desktop / analysis machine) |
+| `04_power_profiling.ipynb` | Power consumption profiling (TC66C) |
+| `07_device_temporal_degradation.ipynb` | Temporal degradation across devices |
 
-Run `00` first on every new device to confirm the environment before
-starting the timed experiments.
+Run `00` first on every new device to confirm the environment before starting the timed experiments.
 
 ---
 
 ## Accessing JupyterLab on a remote device
 
-JupyterLab runs on the device but is accessed from your development machine
-via **SSH port forwarding**. This is the most reliable approach — no firewall
-changes, no IP configuration.
+JupyterLab runs on the device but is accessed from your development machine via **SSH port forwarding**. This is the most reliable approach — no firewall changes, no IP configuration.
 
 **Step 1 — On the device**, start JupyterLab from the project root:
 
 ```bash
 ssh-copy-id <user>@<device-ip>  # Do this once to set up passwordless SSH
-cd ~/yolo26-track-edge-benchmark
+cd /path/to/yolo26-track-edge-benchmark
 DEVICE_PROFILE=$(pwd)/edge/profiles/<profile>.yaml \
-  jupyter lab --no-browser --port=8888
+  jupyter lab --no-browser -ip=0.0.0.0 --port=8888
 ```
 
-Using `$(pwd)/...` produces an absolute path, which avoids resolution
-errors when JupyterLab changes the working directory internally.
+_Using `$(pwd)/...` produces an absolute path, which avoids resolution errors when JupyterLab changes the working directory internally._
 
 Copy the token from the output (looks like `?token=abc123...`).
 
-**Step 2 — On your development machine**, open an SSH tunnel in a new terminal:
+**Step 2** — Open `http://<hostname>:8888` in your browser and paste the token. You can also click the URL in the terminal output if your SSH client supports it.
 
-```bash
-ssh -L 8888:localhost:8888 pi@<device-ip>
-```
-
-**Step 3** — Open `http://localhost:8888` in your browser and paste the token.
-
-The tunnel stays open as long as the SSH session is active. To keep the
-notebook running after you close your laptop, start JupyterLab inside `tmux`
-or `screen` on the device before opening the tunnel.
+To keep the notebook running after you close your laptop or shutdown yout computer, start JupyterLab inside `tmux` or `screen` on the device before opening the tunnel.
 
 ```bash
 # On the device — start a persistent session
@@ -128,13 +103,17 @@ DEVICE_PROFILE=$(pwd)/edge/profiles/<profile>.yaml jupyter lab --no-browser --po
 
 ## Cross-device reproducibility
 
-All devices pin `ultralytics==8.4.19` — NMS/post-processing logic differs
-between versions.
+All devices pin `ultralytics==8.4.19` — NMS/post-processing logic differs between versions. All models originate from the same `.pt` weights, exported per-backend to preserve numerical equivalence at the detection-head level.
 
-All devices run FP32 inference (PyTorch CUDA on Jetson, CPU on RPi 4/5,
-CUDA or CPU on desktop). Verified experimentally: `.pt` FP32 produces
-identical detection counts and confidences across torch 1.11 (Jetson) and
-torch 2.x (RPi/desktop) on the same inputs.
+| Device | Backend | Model format | Compute |
+|---|---|---|---|
+| Desktop | PyTorch CUDA / CPU | `.pt` | GPU or CPU (auto) |
+| RPi 5 + Hailo-8L | HailoRT | `.hef` | Hailo-8L 13 TOPS |
+| RPi 5 (CPU) | NCNN | `ncnn_model` | Cortex-A76 NEON |
+| RPi 4 | NCNN | `ncnn_model` | Cortex-A72 NEON |
+| Jetson Nano | PyTorch CUDA FP32 | `.pt` | Maxwell sm_53 |
+| Jetson Nano TRT | TensorRT HQ FP16 | `.engine` | Maxwell sm_53 |
+| Arduino Uno Q | NCNN | `ncnn_model` | Cortex-A53 NEON |
 
 ---
 
@@ -178,6 +157,8 @@ pip install hailort-<version>-cp311-cp311-linux_aarch64.whl
 rsync -avP user@devmachine:path/to/models/*.hef models/
 ```
 
+> **Note:** The HEF files are available in the `models/` directory and tracked with LFS. If you modify the models or want to export new ones, follow the [HEF export instructions](#hef-export-for-hailo-8l) below.
+
 #### Run
 
 ```bash
@@ -190,8 +171,8 @@ DEVICE_PROFILE=$(pwd)/edge/profiles/rpi5_hailo.yaml jupyter lab --ip=0.0.0.0 --n
 ### Raspberry Pi 5 — CPU only
 
 **Profile:** `edge/profiles/rpi5_cpu.yaml`
-**Backend:** PyTorch CPU (Cortex-A76, 8 GB LPDDR4X)
-**Models:** `.pt`
+**Backend:** NCNN (Cortex-A76 NEON, 8 GB LPDDR4X)
+**Models:** `ncnn_model`
 
 #### Setup on the Pi
 
@@ -209,51 +190,49 @@ rsync -avP user@devmachine:path/to/models/*.pt models/
 
 ```bash
 source .venv/bin/activate
-DEVICE_PROFILE=$(pwd)/edge/profiles/rpi5_cpu.yaml jupyter lab --no-browser --port=8888
+DEVICE_PROFILE=$(pwd)/edge/profiles/rpi5_cpu.yaml jupyter lab --no-browser --ip=0.0.0.0 --port=8888
 ```
-
-> **Note:** yolo26m and above will be slow (~0.5–2 FPS). The notebooks skip
-> variants that exceed available memory and log the failure.
 
 ---
 
 ### Raspberry Pi 4
 
 **Profile:** `edge/profiles/rpi4.yaml`
-**Backend:** PyTorch CPU (Cortex-A72, 4 GB LPDDR4)
-**Models:** `.pt`
-**Setup guide:** [`edge/RPi4_IMPLEMENTATION.md`](edge/RPi4_IMPLEMENTATION.md)
+**Backend:** NCNN (Cortex-A72 NEON, 4 GB LPDDR4)
+**Models:** `ncnn_model`
+**Setup guide:** [`edge/setup/MiniForge_SETUP.md`](edge/setup/MiniForge_SETUP.md)
 
-The RPi 4 uses Cortex-A72 (ARMv8.0-A), which lacks the ARMv8.2-A instructions
-in modern PyPI wheels. The setup guide uses Miniforge (Conda) with pinned
-PyTorch and NumPy versions compiled for broader ARM compatibility.
+The RPi 4 uses Cortex-A72 (ARMv8.0-A), which lacks the ARMv8.2-A instructions in modern PyPI wheels. The setup guide uses Miniforge (Conda) with pinned PyTorch and NumPy versions compiled for broader ARM compatibility.
 
 
 ```bash
-DEVICE_PROFILE=$(pwd)/edge/profiles/rpi4.yaml jupyter lab --no-browser --port=8888
+DEVICE_PROFILE=$(pwd)/edge/profiles/rpi4.yaml jupyter lab --no-browser --ip=0.0.0.0 --port=8888
 ```
 
 ---
 
 ### Jetson Nano (JetPack 4.x)
 
-**Profile:** `edge/profiles/jetson_nano.yaml`
-**Backend:** PyTorch CUDA FP32 (Maxwell GPU, 4 GB shared)
-**Models:** `.pt`
-**Setup guide:** [`edge/JetsonNano_SETUP.md`](edge/JetsonNano_SETUP.md)
+**Setup guide:** [`edge/setup/JetsonNano_SETUP.md`](edge/setup/JetsonNano_SETUP.md)
 
-JetPack 4.6.x ships CUDA 10.2 and TensorRT 8.2 on the Maxwell GPU. TensorRT
-engines (both FP16 and FP32) produce incorrect detection counts due to the
-ONNX→TensorRT graph compilation on TRT 8.2 / sm_53 — verified experimentally.
-Instead, inference runs via PyTorch CUDA with `.pt` weights at FP32 precision,
-matching the desktop baseline exactly. See the setup guide for the full 13-step
-installation process.
+JetPack 4.6.x ships CUDA 10.2 and TensorRT 8.2 on the Maxwell GPU (128 cores, sm_53, 4 GB shared). Two profiles are available:
+
+| Profile | Backend | Model format | Precision |
+|---|---|---|---|
+| `edge/profiles/jetson_nano.yaml` | PyTorch CUDA | `.pt` | FP32 |
+| `edge/profiles/jetson_nano_trt.yaml` | TensorRT HQ | `.engine` | FP16 |
+
+The TensorRT HQ pipeline uses graph-surgery to cut the ONNX model at the 6 detection-head Conv outputs, bypassing the post-processing ops that TRT 8.2 compiles incorrectly on Maxwell. Post-processing (anchor decode, NMS) runs on CPU. See the setup guide for the full installation process.
 
 #### Run
 
 ```bash
 source .venv/bin/activate
+# PyTorch CUDA FP32
 DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano.yaml jupyter lab \
+  --ip=0.0.0.0 --no-browser --port=8888
+# TensorRT HQ FP16
+DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano_trt.yaml jupyter lab \
   --ip=0.0.0.0 --no-browser --port=8888
 ```
 
@@ -265,8 +244,9 @@ DEVICE_PROFILE=$(pwd)/edge/profiles/jetson_nano.yaml jupyter lab \
 ### Arduino Uno Q (QRB2210)
 
 **Profile:** `edge/profiles/arduino_uno_q.yaml`
-**Backend:** PyTorch CPU (Cortex-A53, 2–4 GB LPDDR4)
-**Models:** `.pt`
+**Backend:** NCNN (Cortex-A53 NEON, 2–4 GB LPDDR4)
+**Models:** `ncnn_model`
+**Setup guide:** [`edge/setup/MiniForge_SETUP.md`](edge/setup/MiniForge_SETUP.md)
 
 #### Setup on the board
 
@@ -346,5 +326,5 @@ Result filenames include the `result_tag` from the device profile
 different devices can coexist in the same `results/raw/` directory without
 collision.
 
-Run `03_results_figures.ipynb` on the development machine to generate
+Run the analysis notebooks on the development machine to generate
 combined figures across all devices.

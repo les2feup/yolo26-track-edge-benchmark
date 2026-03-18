@@ -46,7 +46,7 @@ import time
 import signal
 from pathlib import Path
 
-_ROOT       = Path(__file__).parents[1]
+_ROOT       = Path(__file__).parents[2]
 _MODELS_DIR = _ROOT / "models"
 
 _DEFAULT_VARIANTS    = ["yolo26n", "yolo26s", "yolo26m"]
@@ -465,7 +465,7 @@ def main() -> None:
             print(f"  [{tag}] {stem}  {rec.get('engine_mb', '')} MB  {rec.get('notes', '')}")
 
     # Append results to CSV log
-    summary_path = _ROOT / "export" / "logs" / "export_results_jetson_hq.csv"
+    summary_path = _ROOT / "edge" / "export" / "logs" / "export_results_jetson_hq.csv"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     file_exists  = summary_path.exists()
     fieldnames   = ["model", "imgsz", "fp16", "status", "engine_mb", "elapsed_s", "notes"]

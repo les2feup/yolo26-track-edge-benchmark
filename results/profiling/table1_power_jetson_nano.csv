@@ -1,4 +1,4 @@
-stem,imgsz,fps,mota,idf1,model,mean_W,ci95_W,std_W,median_W,iqr_W,peak_W,delta_W,n_runs,fps_per_W
+model,imgsz,fps,mota,idf1,model,mean_W,ci95_W,std_W,median_W,iqr_W,peak_W,delta_W,n_runs,fps_per_W
 yolo26l,576,1.8,0.407,0.518,,,,,,,,,,
 yolo26l,640,1.5,0.407,0.541,,,,,,,,,,
 yolo26m,576,2.4,0.429,0.516,yolo26m.pt,8.8259,0.0412,0.0332,8.821,0.0401,10.4916,5.425,5.0,0.27

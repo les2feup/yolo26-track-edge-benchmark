@@ -1,8 +1,8 @@
-# Raspberry Pi 4 Setup: YOLO Edge Tracking Benchmark
+# Miniforge Setup: ARMv8.0-A Devices
 
-## ⚠️ Architecture Compatibility
+## Architecture Compatibility
 
-The Raspberry Pi 4 (Cortex-A72, ARMv8.0-A) lacks the NEON dot-product instructions required by modern `aarch64` wheels (compiled for ARMv8.2-A+). Running standard PyPI wheels for PyTorch > 2.1 or NumPy 2.x causes an immediate `Illegal instruction` crash.
+ARMv8.0-A cores (Cortex-A72, Cortex-A53) lack the NEON dot-product instructions required by modern `aarch64` wheels (compiled for ARMv8.2-A+). Running standard PyPI wheels for PyTorch > 2.1 or NumPy 2.x causes an immediate `Illegal instruction` crash.
 
 **Fix:** Use Miniforge (conda-forge) with PyTorch < 2.1 and NumPy < 2.0, which ship broader ARM-compatible binaries.
 
@@ -37,7 +37,7 @@ pip install -e .
 ### 4. Register the Jupyter Kernel
 
 ```bash
-python -m ipykernel install --user --name yolo-edge --display-name "Python (YOLO Edge Pi4)"
+python -m ipykernel install --user --name yolo-edge --display-name "Python (YOLO Edge)"
 ```
 
 ---
@@ -46,5 +46,5 @@ python -m ipykernel install --user --name yolo-edge --display-name "Python (YOLO
 
 ```bash
 conda activate yolo-edge
-DEVICE_PROFILE=$(pwd)/edge/profiles/rpi4.yaml jupyter lab --no-browser --ip=0.0.0.0 --port=8889
+DEVICE_PROFILE=$(pwd)/edge/profiles/<device>.yaml jupyter lab --no-browser --ip=0.0.0.0 --port=8888
 ```
