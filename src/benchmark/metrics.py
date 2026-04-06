@@ -8,6 +8,8 @@ import motmetrics as mm
 import numpy as np
 import pandas as pd
 
+from scipy.optimize import linear_sum_assignment
+
 from benchmark.config import MIN_TRACK_LEN_FRAMES
 from benchmark.mot_gt import load_gt, load_seqinfo
 
@@ -85,6 +87,63 @@ def compute_mot_metrics(raw_csv: Path, seq_dir: Path) -> dict:
         "fps":                 fps,
         "peak_mem_mb":         peak_mem_mb,
     }
+
+
+def compute_det_recall(raw_csv: Path, seq_dir: Path, iou_thresh: float = 0.5) -> float:
+    """GT-relative detection recall for one (model, sequence, resolution) run.
+
+    For each frame, predicted bounding boxes are matched to ground-truth
+    annotations via optimal bipartite assignment on the IoU cost matrix
+    (Hungarian algorithm).  A match counts as a true positive when
+    IoU >= iou_thresh.  Recall = total TP / total GT annotations across
+    all frames.
+
+    This metric is intentionally detection-only: track IDs are ignored so
+    that the signal isolates the detector's ability to find objects from
+    the tracker's ability to maintain identities.  Comparing this recall
+    curve against the MT loss curve (tracking continuity) reveals the
+    detection-tracking divergence gap that is the paper's central claim.
+    """
+    gt_df  = load_gt(seq_dir)
+    raw_df = pd.read_csv(raw_csv)
+
+    total_tp = 0
+    total_gt = 0
+
+    for fid in gt_df["frame_id"].unique():
+        gt_frame = gt_df[gt_df["frame_id"] == fid]
+        gt_boxes = gt_frame[["x", "y", "w", "h"]].values.astype(float)
+        total_gt += len(gt_boxes)
+
+        raw_row = raw_df[raw_df["frame_id"] == fid]
+        if raw_row.empty:
+            continue
+        bboxes_xyxy = json.loads(raw_row.iloc[0]["bboxes_xyxy"])
+        if not bboxes_xyxy:
+            continue
+
+        # Convert xyxy predictions to xywh to match GT format
+        pred_boxes = np.array(bboxes_xyxy, dtype=float)
+        pred_xywh = np.stack([
+            pred_boxes[:, 0],
+            pred_boxes[:, 1],
+            pred_boxes[:, 2] - pred_boxes[:, 0],
+            pred_boxes[:, 3] - pred_boxes[:, 1],
+        ], axis=1)
+
+        # IoU distance matrix (1 − IoU); entries with IoU < iou_thresh are NaN
+        dist = _iou_distance(gt_boxes, pred_xywh)
+
+        # Replace NaN (infeasible) with a large cost for the assignment solver
+        cost = np.where(np.isnan(dist), 1e6, dist)
+        row_ind, col_ind = linear_sum_assignment(cost)
+
+        # Count only assignments where IoU actually met the threshold
+        for r, c in zip(row_ind, col_ind):
+            if not np.isnan(dist[r, c]):
+                total_tp += 1
+
+    return total_tp / total_gt if total_gt > 0 else 0.0
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────

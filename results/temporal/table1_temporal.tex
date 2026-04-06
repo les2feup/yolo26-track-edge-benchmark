@@ -1,0 +1,68 @@
+\begin{table}[htp]
+\caption{Per-device, per-variant profiling and real-time tracking quality at two resolutions.}
+\label{tab:profiling}
+\centering
+\begin{threeparttable}
+\setlength{\tabcolsep}{1.5pt}
+\begin{tabular}{@{}lc rr r r rrr rrr@{}}
+\toprule
+& &
+  \multicolumn{2}{c}{FPS} &
+  &
+  &
+  \multicolumn{3}{c}{Quality @ 640\,px} &
+  \multicolumn{3}{c}{Quality @ 576\,px} \\
+\cmidrule(lr){3-4}\cmidrule(lr){7-9}\cmidrule(lr){10-12}
+Device & V &
+  640 & 576 &
+  \makecell{Mem\\(MB)\tnote{$\ddagger$}} &
+  \makecell{Pwr\\(W)\tnote{$\ddagger$}} &
+  \makecell{MO-\\TA\\[-1pt]{\tiny$\uparrow$}} & \makecell{IDSW\\$/\!$\,GT\\[-1pt]{\tiny$\downarrow$}} & \makecell{MT\\[-1pt]{\tiny$\uparrow$}} &
+  \makecell{MO-\\TA\\[-1pt]{\tiny$\uparrow$}} & \makecell{IDSW\\$/\!$\,GT\\[-1pt]{\tiny$\downarrow$}} & \makecell{MT\\[-1pt]{\tiny$\uparrow$}} \\
+\midrule
+\multirow{3}{*}{\makecell[l]{Ref.\\FP32\\30 FPS\tnote{*}}}
+  & N & \multicolumn{4}{c}{\scriptsize offline reference} & .323 & 0.64 & .215 & .299 & 0.65 & .203 \\
+  & S & \multicolumn{4}{c}{\scriptsize offline reference} & .375 & 0.49 & .272 & .351 & 0.63 & .266 \\
+  & M & \multicolumn{4}{c}{\scriptsize offline reference} & .380 & 0.44 & .266 & .376 & 0.49 & .266 \\
+\midrule
+\multirow{3}{*}{\makecell[l]{\\RPi\,5\\CPU}}
+  & N & 13.1 & 16.7 & 421 & 8.7 & \makecell[r]{.318\\[-2pt]{\scriptsize(-2\%)}} & \makecell[r]{0.52\\[-2pt]{\scriptsize(-18\%)}} & \makecell[r]{.204\\[-2pt]{\scriptsize(-5\%)}} & \makecell[r]{.299\\[-2pt]{\scriptsize(+0\%)}} & \makecell[r]{0.56\\[-2pt]{\scriptsize(-14\%)}} & \makecell[r]{.196\\[-2pt]{\scriptsize(-3\%)}} \\
+  & S & 5.7 & 7.3 & 421 & 9.6 & \makecell[r]{.350\\[-2pt]{\scriptsize(-7\%)}} & \makecell[r]{0.63\\[-2pt]{\scriptsize(+29\%)}} & \makecell[r]{.210\\[-2pt]{\scriptsize(-23\%)}} & \makecell[r]{.337\\[-2pt]{\scriptsize(-4\%)}} & \makecell[r]{0.55\\[-2pt]{\scriptsize(-13\%)}} & \makecell[r]{.229\\[-2pt]{\scriptsize(-14\%)}} \\
+  & M & 1.8 & 2.3 & 421 & 10.3 & \makecell[r]{.144\\[-2pt]{\scriptsize(-62\%)}} & \makecell[r]{0.59\\[-2pt]{\scriptsize(+36\%)}} & \makecell[r]{.073\\[-2pt]{\scriptsize(-72\%)}} & \makecell[r]{.196\\[-2pt]{\scriptsize(-48\%)}} & \makecell[r]{0.84\\[-2pt]{\scriptsize(+72\%)}} & \makecell[r]{.123\\[-2pt]{\scriptsize(-54\%)}} \\
+\midrule
+\multirow{3}{*}{\makecell[l]{\\RPi\,5\\NPU\tnote{$\dagger$}}}
+  & N & 46.0 & 51.1 & 222 & 5.9 & \makecell[r]{.248\\[-2pt]{\scriptsize(-23\%)}} & \makecell[r]{0.49\\[-2pt]{\scriptsize(-23\%)}} & \makecell[r]{.101\\[-2pt]{\scriptsize(-53\%)}} & \makecell[r]{.245\\[-2pt]{\scriptsize(-18\%)}} & \makecell[r]{0.61\\[-2pt]{\scriptsize(-6\%)}} & \makecell[r]{.082\\[-2pt]{\scriptsize(-59\%)}} \\
+  & S & 30.9 & 32.0 & 220 & 5.6 & \makecell[r]{.360\\[-2pt]{\scriptsize(-4\%)}} & \makecell[r]{0.42\\[-2pt]{\scriptsize(-14\%)}} & \makecell[r]{.209\\[-2pt]{\scriptsize(-23\%)}} & \makecell[r]{.335\\[-2pt]{\scriptsize(-5\%)}} & \makecell[r]{0.34\\[-2pt]{\scriptsize(-46\%)}} & \makecell[r]{.184\\[-2pt]{\scriptsize(-31\%)}} \\
+  & M & 18.1 & 19.9 & 238 & 5.3 & \makecell[r]{.358\\[-2pt]{\scriptsize(-6\%)}} & \makecell[r]{0.22\\[-2pt]{\scriptsize(-49\%)}} & \makecell[r]{.190\\[-2pt]{\scriptsize(-29\%)}} & \makecell[r]{.333\\[-2pt]{\scriptsize(-11\%)}} & \makecell[r]{0.23\\[-2pt]{\scriptsize(-52\%)}} & \makecell[r]{.165\\[-2pt]{\scriptsize(-38\%)}} \\
+\midrule
+\multirow{3}{*}{\makecell[l]{\\RPi\,4\\CPU}}
+  & N & 2.1 & 2.5 & 303 & 4.8 & \makecell[r]{.176\\[-2pt]{\scriptsize(-45\%)}} & \makecell[r]{0.72\\[-2pt]{\scriptsize(+13\%)}} & \makecell[r]{.078\\[-2pt]{\scriptsize(-64\%)}} & \makecell[r]{.168\\[-2pt]{\scriptsize(-44\%)}} & \makecell[r]{0.65\\[-2pt]{\scriptsize(+0\%)}} & \makecell[r]{.065\\[-2pt]{\scriptsize(-68\%)}} \\
+  & S & 0.9 & 1.1 & 303 & 4.9 & n.a. & n.a. & n.a. & \makecell[r]{.133\\[-2pt]{\scriptsize(-62\%)}} & \makecell[r]{0.56\\[-2pt]{\scriptsize(-11\%)}} & \makecell[r]{.087\\[-2pt]{\scriptsize(-67\%)}} \\
+  & M & 0.2 & 0.3 & 303 & 4.9 & n.a. & n.a. & n.a. & n.a. & n.a. & n.a. \\
+\midrule
+\multirow{3}{*}{\makecell[l]{\\Jetson\\Nano\\CUDA}}
+  & N & 7.5 & 9.2 & 1708 & 6.9 & \makecell[r]{.308\\[-2pt]{\scriptsize(-5\%)}} & \makecell[r]{0.50\\[-2pt]{\scriptsize(-21\%)}} & \makecell[r]{.185\\[-2pt]{\scriptsize(-14\%)}} & \makecell[r]{.293\\[-2pt]{\scriptsize(-2\%)}} & \makecell[r]{0.54\\[-2pt]{\scriptsize(-18\%)}} & \makecell[r]{.185\\[-2pt]{\scriptsize(-9\%)}} \\
+  & S & 4.3 & 5.1 & 1731 & 7.9 & \makecell[r]{.327\\[-2pt]{\scriptsize(-13\%)}} & \makecell[r]{0.73\\[-2pt]{\scriptsize(+49\%)}} & \makecell[r]{.191\\[-2pt]{\scriptsize(-30\%)}} & \makecell[r]{.315\\[-2pt]{\scriptsize(-10\%)}} & \makecell[r]{0.76\\[-2pt]{\scriptsize(+22\%)}} & \makecell[r]{.191\\[-2pt]{\scriptsize(-28\%)}} \\
+  & M & 2.0 & 2.4 & 1747 & 8.8 & \makecell[r]{.220\\[-2pt]{\scriptsize(-42\%)}} & \makecell[r]{0.83\\[-2pt]{\scriptsize(+90\%)}} & \makecell[r]{.117\\[-2pt]{\scriptsize(-56\%)}} & \makecell[r]{.196\\[-2pt]{\scriptsize(-48\%)}} & \makecell[r]{0.84\\[-2pt]{\scriptsize(+72\%)}} & \makecell[r]{.123\\[-2pt]{\scriptsize(-54\%)}} \\
+\midrule
+\multirow{3}{*}{\makecell[l]{\\Jetson\\Nano\\TRT}}
+  & N & 9.9 & 11.5 & 1164 & 8.0 & \makecell[r]{.272\\[-2pt]{\scriptsize(-16\%)}} & \makecell[r]{0.46\\[-2pt]{\scriptsize(-27\%)}} & \makecell[r]{.134\\[-2pt]{\scriptsize(-38\%)}} & \makecell[r]{.258\\[-2pt]{\scriptsize(-14\%)}} & \makecell[r]{0.44\\[-2pt]{\scriptsize(-33\%)}} & \makecell[r]{.127\\[-2pt]{\scriptsize(-37\%)}} \\
+  & S & 5.1 & 6.0 & 1163 & 8.2 & \makecell[r]{.367\\[-2pt]{\scriptsize(-2\%)}} & \makecell[r]{0.66\\[-2pt]{\scriptsize(+35\%)}} & \makecell[r]{.197\\[-2pt]{\scriptsize(-27\%)}} & \makecell[r]{.351\\[-2pt]{\scriptsize(+0\%)}} & \makecell[r]{0.61\\[-2pt]{\scriptsize(-3\%)}} & \makecell[r]{.153\\[-2pt]{\scriptsize(-42\%)}} \\
+  & M & 2.2 & 2.7 & 1158 & 9.2 & \makecell[r]{.293\\[-2pt]{\scriptsize(-23\%)}} & \makecell[r]{0.73\\[-2pt]{\scriptsize(+68\%)}} & \makecell[r]{.117\\[-2pt]{\scriptsize(-56\%)}} & \makecell[r]{.254\\[-2pt]{\scriptsize(-33\%)}} & \makecell[r]{0.70\\[-2pt]{\scriptsize(+44\%)}} & \makecell[r]{.123\\[-2pt]{\scriptsize(-54\%)}} \\
+\midrule
+\multirow{3}{*}{\makecell[l]{\\Arduino\\Uno\,Q}}
+  & N & 2.5 & 3.3 & 321 & 2.4 & \makecell[r]{.176\\[-2pt]{\scriptsize(-45\%)}} & \makecell[r]{0.72\\[-2pt]{\scriptsize(+13\%)}} & \makecell[r]{.078\\[-2pt]{\scriptsize(-64\%)}} & \makecell[r]{.212\\[-2pt]{\scriptsize(-29\%)}} & \makecell[r]{0.51\\[-2pt]{\scriptsize(-22\%)}} & \makecell[r]{.097\\[-2pt]{\scriptsize(-52\%)}} \\
+  & S & 1.0 & 1.3 & 322 & 2.8 & \makecell[r]{.136\\[-2pt]{\scriptsize(-64\%)}} & \makecell[r]{0.59\\[-2pt]{\scriptsize(+20\%)}} & \makecell[r]{.067\\[-2pt]{\scriptsize(-76\%)}} & \makecell[r]{.133\\[-2pt]{\scriptsize(-62\%)}} & \makecell[r]{0.56\\[-2pt]{\scriptsize(-11\%)}} & \makecell[r]{.087\\[-2pt]{\scriptsize(-67\%)}} \\
+  & M & 0.3 & 0.4 & 322 & 3.0 & n.a. & n.a. & n.a. & n.a. & n.a. & n.a. \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}\footnotesize
+  \item[$*$] Reference rows report offline sequential FP32 quality at 30 FPS on the desktop pipeline.
+  \item[$\ddagger$] Memory and power are measured at 640\,px; both are invariant to resolution (see Section~\ref{sec:profiling}).
+  \item[] Parenthetical percentages are relative to the matching FP32 reference row at the same resolution.
+  \item[] Device-row quality columns report real-time temporal replay estimates at $\lfloor\text{FPS}\rfloor$, capped at 30.
+  \item[$\dagger$] INT8 quantization via HailoRT.
+  \item[] n.a.\,= not applicable; device throughput ${<}\,1$\,FPS makes real-time tracking meaningless.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}

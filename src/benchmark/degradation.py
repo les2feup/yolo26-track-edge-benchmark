@@ -7,17 +7,25 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import linear_sum_assignment
 
-from benchmark.metrics import compute_mot_metrics
+from benchmark.metrics import compute_det_recall, compute_mot_metrics
 from benchmark.mot_gt import load_seqinfo
+
+
+def detection_recall(csv_path: Path, seq_dir: Path) -> float:
+    """GT-relative detection recall (IoU >= 0.5) for one run.
+
+    Thin wrapper around compute_det_recall that fits the degradation module's
+    call convention.  Returns scalar recall in [0, 1].
+    """
+    return compute_det_recall(csv_path, seq_dir)
 
 
 def detection_stability(csv_path: Path, baseline_csv: Path) -> float:
     """Mean absolute deviation of per-frame detection count vs the 640 baseline.
 
-    Measures whether the detector continues to find approximately the same
-    number of objects as resolution decreases.  The MAD is computed relative
-    to the mean detection count of the baseline run — not the current run —
-    so that zero degradation corresponds to a value near zero.
+    Diagnostic only — measures whether the detector finds approximately the same
+    number of objects as resolution decreases.  Not GT-relative: conflates TP
+    and FP count changes.  Use detection_recall() for the GT-anchored signal.
     """
     df_cur  = pd.read_csv(csv_path)
     df_base = pd.read_csv(baseline_csv)
